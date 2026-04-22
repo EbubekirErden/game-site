@@ -1,5 +1,7 @@
 import React from "react";
 
+import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
+
 type HomePageProps = {
   games: Array<{
     id: string;
@@ -61,8 +63,19 @@ export function HomePage({
         {activeGame ? (
           <div className="hub-action-stage">
             <header className="stage-header">
-              <h2>{activeGame.title}</h2>
-              <p>{activeGame.description}</p>
+              <div className="stage-header-row">
+                <div>
+                  <h2>{activeGame.title}</h2>
+                  <p>{activeGame.description}</p>
+                </div>
+                {activeGame.id === "love-letter" ? (
+                  <LoveLetterInfoDrawer
+                    buttonClassName="info-trigger-button info-trigger-button-home"
+                    buttonLabel="Rules & Cards"
+                    buttonTitle="Open Love Letter rules and card guide"
+                  />
+                ) : null}
+              </div>
             </header>
 
             <div className="player-setup">

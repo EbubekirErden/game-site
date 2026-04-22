@@ -5,6 +5,7 @@ import type { CardInstance, PlayerViewState } from "@game-site/shared";
 
 import { ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
+import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
 import { cardIdByValue, playerNameById } from "../lib/gamePresentation.js";
 
 type RoomPageProps = {
@@ -196,6 +197,11 @@ export function RoomPage({
               {isMyTurn ? "Your Turn" : currentTurnName ? `${currentTurnName}'s Turn` : "Turn in progress"}
             </span>
           )}
+          <LoveLetterInfoDrawer
+            buttonClassName="info-trigger-button info-trigger-button-room"
+            buttonLabel="i"
+            buttonTitle="Open Love Letter rules and card guide"
+          />
           <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
         </div>
       </header>

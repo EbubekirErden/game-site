@@ -302,6 +302,13 @@ input::placeholder {
 .stage-header h2 { margin: 0 0 8px 0; font-size: 1.8rem; }
 .stage-header p { margin: 0; color: #a0aab5; }
 
+.stage-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .player-setup {
   margin-top: 24px;
   padding-bottom: 32px;
@@ -392,6 +399,32 @@ input::placeholder {
   gap: 16px;
 }
 
+.info-trigger-button {
+  border: 1px solid rgba(141, 182, 245, 0.35);
+  background: rgba(74, 103, 150, 0.18);
+  color: #d9e8ff;
+  border-radius: 10px;
+  font-weight: 700;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.info-trigger-button:hover {
+  background: rgba(74, 103, 150, 0.3);
+  border-color: rgba(141, 182, 245, 0.55);
+  transform: translateY(-1px);
+}
+
+.info-trigger-button-room {
+  padding: 6px 12px;
+  min-width: 40px;
+  line-height: 1.2;
+}
+
+.info-trigger-button-home {
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+
 .turn-indicator {
   padding: 6px 12px;
   border-radius: 8px;
@@ -404,6 +437,155 @@ input::placeholder {
   padding: 6px 12px;
   min-height: 0;
   line-height: 1.2;
+}
+
+.info-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 12, 17, 0.46);
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 24px;
+}
+
+.info-drawer {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: rgba(24, 33, 43, 0.98);
+  border: 1px solid #2f3d4f;
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  padding: 20px;
+  animation: panel-fade-in 180ms ease-out;
+}
+
+.info-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #2a3543;
+}
+
+.info-drawer-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.35rem;
+  color: #fff;
+}
+
+.info-drawer-header p {
+  margin: 0;
+  color: #98a8ba;
+}
+
+.info-close-button {
+  border: 1px solid #3d4c5f;
+  background: rgba(42, 53, 67, 0.85);
+  color: #d4dde7;
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+
+.info-section {
+  padding-top: 18px;
+}
+
+.info-section h3 {
+  margin: 0 0 12px 0;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.info-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #c6d0dc;
+}
+
+.info-list li + li {
+  margin-top: 8px;
+}
+
+.info-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.info-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(15, 20, 26, 0.55);
+  border: 1px solid #304051;
+  color: #d9e2eb;
+}
+
+.info-chip span {
+  color: #8db6f5;
+  font-size: 0.9rem;
+}
+
+.info-muted {
+  margin: 0;
+  color: #9fb0c0;
+}
+
+.info-card-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.info-card-entry {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(15, 20, 26, 0.52);
+  border: 1px solid #304051;
+}
+
+.info-card-visual {
+  display: flex;
+  justify-content: center;
+}
+
+.info-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-card-copy p {
+  margin: 0;
+  color: #c6d0dc;
+  font-size: 0.92rem;
+}
+
+.info-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.info-card-meta strong {
+  color: #fff;
+}
+
+.info-card-meta span {
+  color: #8db6f5;
+  font-size: 0.9rem;
 }
 
 .turn-indicator.is-my-turn {
@@ -1010,4 +1192,24 @@ input::placeholder {
   background: rgba(255, 154, 213, 0.18);
   color: #ffc7e9;
   border: 1px solid rgba(255, 154, 213, 0.35);
+}
+
+@media (max-width: 900px) {
+  .stage-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .info-overlay {
+    padding: 12px;
+  }
+
+  .info-drawer {
+    width: min(100%, 520px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .info-card-entry {
+    grid-template-columns: 1fr;
+  }
 }

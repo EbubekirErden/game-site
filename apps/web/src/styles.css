@@ -104,6 +104,14 @@ input::placeholder {
   color: #647180;
 }
 
+.copyable {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.copyable:hover {
+  opacity: 0.8;
+}
+
 /* --- AUTHENTIC CARD STYLING --- */
 .card-view {
   width: 140px;
@@ -130,6 +138,11 @@ input::placeholder {
   border-color: #1f6feb;
   transform: translateY(-16px) scale(1.05);
   box-shadow: 0 16px 32px rgba(31, 111, 235, 0.3);
+}
+
+.card-view-spotlight {
+  transform: scale(1.05);
+  box-shadow: 0 16px 32px rgba(0,0,0,0.4);
 }
 
 .card-view-header {
@@ -191,7 +204,14 @@ input::placeholder {
 }
 .card-view-compact .card-view-rank { font-size: 1.2rem; }
 .card-view-compact .card-view-center-art svg { width: 32px; height: 32px; }
-.card-view-compact .card-view-footer { font-size: 0.7rem; padding-top: 4px; }
+.card-view-compact .card-view-footer { 
+  font-size: 0.65rem; 
+  padding-top: 4px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* --- GAME HUB LAYOUT (HOME PAGE) --- */
 .hub-layout {
@@ -278,7 +298,7 @@ input::placeholder {
   grid-template-columns: 1fr auto 1fr;
   gap: 24px;
   margin-top: 32px;
-  align-items: stretch; /* Makes the boxes equal height */
+  align-items: stretch; 
 }
 
 .action-card { 
@@ -292,20 +312,17 @@ input::placeholder {
   height: 100%;
 }
 
-.action-card button {
-  margin-top: auto; 
-}
+.action-card h3 { margin: 0; font-size: 1.2rem; }
+.action-card p { margin: 0; color: #9ba7b5; font-size: 0.95rem; }
+.action-card button { margin-top: auto; }
 
 .action-divider {
   display: flex;
   align-items: center;
   color: #a0aab5;
   font-weight: bold;
-  height: 100%; /* Keeps the "OR" centered */
+  height: 100%;
 }
-
-.action-card h3 { margin: 0; font-size: 1.2rem; }
-.action-card p { margin: 0; color: #9ba7b5; font-size: 0.95rem; }
 
 .hub-empty-state {
   text-align: center;
@@ -466,7 +483,6 @@ input::placeholder {
 
 .player-row-info { display: flex; flex-direction: column; font-size: 0.95rem; }
 .player-row-info strong { color: #fff; }
-
 .player-status-text { font-size: 0.8rem; color: #a0aab5; }
 
 .mini-ready-pill {
@@ -481,121 +497,7 @@ input::placeholder {
 .full-width { width: 100%; justify-content: center; text-align: center; }
 .mt-2 { margin-top: 8px; }
 
-/* Board Area */
-.board-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.deck-info { font-weight: bold; color: #8db6f5; }
-
-.opponent-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-}
-
-.opponent-zone {
-  padding: 16px;
-  background: rgba(15, 20, 26, 0.4);
-  border-radius: 12px;
-  border: 1px solid #2a3543;
-}
-
-.opponent-zone.hidden { display: none; }
-
-.opponent-name {
-  font-weight: bold;
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: space-between;
-  color: #fff;
-  border-bottom: 1px solid #3d4c5f;
-  padding-bottom: 8px;
-}
-
-.discard-spread { display: flex; flex-wrap: wrap; gap: 8px; }
-
-/* Play Stage Horizontal */
-.play-stage-horizontal {
-  display: flex;
-  gap: 32px;
-  align-items: stretch;
-  padding: 24px;
-  background: rgba(15, 20, 26, 0.5);
-  border-radius: 12px;
-  margin-bottom: 20px;
-  border: 1px solid #2a3543;
-}
-
-.stage-card-slot {
-  width: 140px;
-  min-height: 196px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-}
-
-.stage-card-slot.is-empty {
-  border: 2px dashed #4a5c70;
-  background: rgba(0,0,0,0.2);
-}
-
-.card-view-spotlight {
-  transform: scale(1.05);
-  box-shadow: 0 16px 32px rgba(0,0,0,0.4);
-}
-
-.empty-slot { color: #a0aab5; font-size: 0.9rem; text-align: center; padding: 10px; }
-
-.stage-actions {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 16px;
-}
-
-.play-btn {
-  padding: 14px;
-  font-size: 1.1rem;
-  font-weight: bold;
-  margin-top: 8px;
-}
-
-/* Hand Dock */
-.hand-dock-horizontal {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  padding: 24px;
-  background: rgba(15, 20, 26, 0.3);
-  border-radius: 12px;
-  border: 1px solid #2a3543;
-}
-
-.activity-panel { flex: 1; display: flex; flex-direction: column;}
-.activity-feed { 
-  display: flex;         
-  flex-direction: column; 
-  gap: 10px; 
-  overflow-y: auto; 
-  padding-right: 4px; 
-  flex: 1; 
-}
-
-.log-item { 
-  padding: 12px; 
-  border-radius: 8px; 
-  background: rgba(15, 20, 26, 0.5); 
-  color: #c9d1d9; 
-  font-size: 0.9rem; 
-  border-left: 3px solid #3d4c5f;
-  height: fit-content;  
-}
-
+/* Start Buttons */
 .ready-start-btn {
   background: #2ecc71;
   color: #0f141a;
@@ -614,13 +516,84 @@ input::placeholder {
   box-shadow: 0 4px 20px rgba(46, 204, 113, 0.6);
 }
 
-/* --- UI ENHANCEMENTS & FLOW STYLES --- */
-.copyable {
-  cursor: pointer;
-  transition: opacity 0.2s;
+.ready-start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
-.copyable:hover {
-  opacity: 0.8;
+
+/* --- INDIVIDUAL TABLE ZONES & FANNED DISCARDS --- */
+.board-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.deck-info { font-weight: bold; color: #8db6f5; }
+
+.table-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.table-zone {
+  padding: 16px;
+  background: rgba(15, 20, 26, 0.4);
+  border-radius: 12px;
+  border: 1px solid #2a3543;
+}
+
+.table-zone.is-self-zone {
+  border-color: rgba(31, 111, 235, 0.4);
+  background: rgba(31, 111, 235, 0.05);
+}
+
+.zone-nameplate {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-weight: bold;
+  color: #fff;
+  border: 1px solid #2a3543;
+}
+
+.token-count {
+  background: rgba(241, 196, 15, 0.15);
+  border: 1px solid rgba(241, 196, 15, 0.3);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: #f1c40f;
+}
+
+/* Fanned Card Setup */
+.discard-fan {
+  display: flex;
+  flex-direction: row;
+  padding-left: 5px; 
+  min-height: 120px; 
+}
+
+.fan-card {
+  margin-left: -50px; /* Forces cards to overlap */
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+}
+
+.fan-card:first-child {
+  margin-left: 0;
+}
+
+.fan-card:hover {
+  transform: translateY(-12px);
+  z-index: 100 !important; /* Bring hovered card to very front */
 }
 
 .removed-section {
@@ -633,8 +606,10 @@ input::placeholder {
   color: #a0aab5;
   font-size: 0.95rem;
 }
+.discard-spread { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* Play Stage Action Flow */
+
+/* --- HAND & ACTION SWAP LAYOUT --- */
 .player-area-header {
   display: flex;
   justify-content: space-between;
@@ -644,46 +619,44 @@ input::placeholder {
 }
 .player-area-header h3 { border: none; margin: 0; padding: 0; }
 
+.focus-hand-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+}
+
 .instruction-text {
   text-align: center;
   color: #a0aab5;
   margin-bottom: 24px;
 }
 
-.hand-dock-centered {
+.hand-cards-large {
   display: flex;
   justify-content: center;
-  gap: 32px;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
-  border: 1px solid #2a3543;
+  gap: 48px; /* Wide gap to fit buttons easily */
+  margin-top: 32px;
 }
 
 .hand-card-wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  position: relative;
+  gap: 16px; /* Uses flex gap instead of absolute positioning! */
 }
 
-.play-btn-overlay {
-  position: absolute;
-  bottom: -50px;
-  width: 120%;
+.inline-play-btn {
+  width: 100%;
+  font-size: 1.1rem;
+  padding: 12px;
   box-shadow: 0 8px 24px rgba(31, 111, 235, 0.4);
   animation: slide-up-fade 0.2s ease-out forwards;
 }
 
-@keyframes slide-up-fade {
-  from { opacity: 0; transform: translateY(15px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.action-step-2 {
+.focus-action-area {
   background: rgba(15, 20, 26, 0.3);
-  padding: 20px;
+  padding: 24px;
   border-radius: 16px;
   border: 1px solid #2a3543;
 }
@@ -694,12 +667,42 @@ input::placeholder {
   gap: 16px;
   margin-bottom: 24px;
 }
-.step-2-header h4 { margin: 0; font-size: 1.2rem; color: #fff; }
+.step-2-header h3 { margin: 0; font-size: 1.2rem; color: #fff; border: none; padding: 0;}
 
-/* Interactive Selection Grids (Replaces Select Dropdowns) */
-.selection-group {
-  margin-bottom: 24px;
+.play-stage-horizontal {
+  display: flex;
+  gap: 32px;
+  align-items: stretch;
 }
+
+.stage-card-slot {
+  width: 140px;
+  min-height: 196px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+.stage-card-slot.is-empty {
+  border: 2px dashed #4a5c70;
+  background: rgba(0,0,0,0.2);
+}
+
+.stage-actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+}
+
+@keyframes slide-up-fade {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Interactive Selection Grids */
+.selection-group { margin-bottom: 24px; }
+.selection-group .dark-label { font-size: 1rem; color: #c9d1d9;}
 
 .selection-grid {
   display: grid;
@@ -745,7 +748,14 @@ input::placeholder {
 
 .guess-name { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
-/* Round Over Scoreboard */
+.play-btn {
+  padding: 14px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin-top: 8px;
+}
+
+/* --- ROUND OVER SCOREBOARD --- */
 .round-over-panel {
   align-items: center;
   justify-content: center;
@@ -787,102 +797,6 @@ input::placeholder {
   border: 1px solid #2a3543;
 }
 
-.alert-panel { border-color: #e74c3c; }
-.alert-panel h3 { color: #e74c3c; border-bottom-color: rgba(231, 76, 60, 0.3); }
-.private-card-showcase { display: flex; justify-content: center; margin-top: 16px; }
-
-/* --- TABLE GRID & FANNED DISCARDS --- */
-.table-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
-}
-
-.table-zone {
-  padding: 16px;
-  background: rgba(15, 20, 26, 0.4);
-  border-radius: 12px;
-  border: 1px solid #2a3543;
-}
-
-.table-zone.is-self-zone {
-  border-color: rgba(31, 111, 235, 0.4);
-  background: rgba(31, 111, 235, 0.05);
-}
-
-.zone-nameplate {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 8px 12px;
-  border-radius: 8px;
-  margin-bottom: 12px;
-  font-weight: bold;
-  color: #fff;
-  border: 1px solid #2a3543;
-}
-
-.token-count {
-  background: rgba(241, 196, 15, 0.15);
-  border: 1px solid rgba(241, 196, 15, 0.3);
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  color: #f1c40f;
-}
-
-/* Fanned Card Setup */
-.discard-fan {
-  display: flex;
-  flex-direction: row;
-  padding-left: 5px; /* Room for shadow */
-  min-height: 120px; /* Accounts for compact card height + hover */
-}
-
-.fan-card {
-  margin-left: -50px; /* Forces cards to overlap, leaving ~30px visible */
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  position: relative;
-}
-
-.fan-card:first-child {
-  margin-left: 0;
-}
-
-.fan-card:hover {
-  transform: translateY(-12px);
-  z-index: 100 !important; /* Bring hovered card to very front */
-}
-
-/* --- PRIVATE INFO DISMISS --- */
-.alert-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(231, 76, 60, 0.3);
-  padding-bottom: 8px;
-  margin-bottom: 12px;
-}
-
-.alert-header h3 {
-  border: none;
-  margin: 0;
-  padding: 0;
-}
-
-.dismiss-btn {
-  background: transparent;
-  border: none;
-  color: #e74c3c;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 4px;
-  transition: opacity 0.2s;
-}
-.dismiss-btn:hover { opacity: 0.7; }
-
-/* --- SCOREBOARD UPGRADES --- */
 .is-ready-row {
   border-color: rgba(46, 204, 113, 0.4) !important;
   background: rgba(46, 204, 113, 0.05) !important;
@@ -893,14 +807,55 @@ input::placeholder {
   box-shadow: inset 0 0 0 2px #fff;
 }
 
-/* --- CARD TEXT FIXES --- */
-.card-view-compact .card-view-footer {
-  font-size: 0.65rem;
-  padding-top: 4px;
-  letter-spacing: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding-left: 2px;
-  padding-right: 2px;
+/* --- PRIVATE INFO & ACTIVITY LOG --- */
+.alert-panel { border-color: #e74c3c; }
+
+.alert-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(231, 76, 60, 0.3);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.alert-header h3 { color: #e74c3c; border: none; margin: 0; padding: 0; }
+
+.dismiss-btn {
+  background: transparent;
+  border: none;
+  color: #e74c3c;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px;
+  transition: opacity 0.2s;
+}
+.dismiss-btn:hover { 
+  opacity: 0.7; 
+}
+
+.private-card-showcase { 
+  display: flex; 
+  justify-content: center; 
+  margin-top: 16px; 
+}
+
+.activity-panel { 
+  flex: 1; 
+  display: flex; 
+  flex-direction: column;}
+.activity-feed { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 10px; overflow-y: auto; 
+  padding-right: 4px; 
+  flex: 1; 
+}
+.log-item { 
+  padding: 12px; 
+  border-radius: 8px; 
+  background: rgba(15, 20, 26, 0.5); 
+  color: #c9d1d9; font-size: 0.9rem; 
+  border-left: 3px solid #3d4c5f; 
+  height: fit-content;
 }

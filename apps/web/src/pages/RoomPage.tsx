@@ -44,6 +44,7 @@ export function RoomPage({
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
   const [dismissedNote, setDismissedNote] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false); // Copy button state
 
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
   const isCreator = state.creatorId === state.selfPlayerId;
@@ -54,6 +55,9 @@ export function RoomPage({
   const readyCount = state.players?.filter((player) => player.isReady).length || 0;
   const allReady = playerCount >= 2 && state.players?.every((player) => player.isReady);
   const showLobby = state.phase === "lobby";
+  const showBetweenRounds = state.phase === "round_over";
+  const showMatchOver = state.phase === "match_over";
+  const showReadyFlow = showLobby || showBetweenRounds;
   
   const guessNeeded = selectedCardDef?.id === "guard";
   const targetNeeded =
@@ -62,6 +66,11 @@ export function RoomPage({
     selectedCardDef?.id === "baron" ||
     selectedCardDef?.id === "king" ||
     selectedCardDef?.id === "prince";
+
+  // Combine all discards into a single pool
+  const allDiscards = React.useMemo(() => {
+    return state.players?.flatMap(p => p.discardPile || []) || [];
+  }, [state.players]);
 
   React.useEffect(() => {
     if (!isMyTurn) setPlayStage("select_card");
@@ -80,7 +89,8 @@ export function RoomPage({
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(state.roomId);
-    alert("Room code copied to clipboard!");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const privateNoteCardId = React.useMemo(() => {
@@ -113,7 +123,7 @@ export function RoomPage({
           <h1>{gameTitle}</h1>
           <span className="phase-badge">{showLobby ? "Waiting Room" : state.phase?.replaceAll("_", " ")}</span>
           <span className="room-code-badge copyable" onClick={handleCopyCode} title="Click to copy">
-            Room: {state.roomId} 📋
+            Room: {state.roomId} {copied ? "✅" : "📋"}
           </span>
         </div>
         <div className="topbar-actions">
@@ -139,27 +149,42 @@ export function RoomPage({
                       {player.status} {player.protectedUntilNextTurn && "🛡️"} • 🪙 {player.tokens || 0}
                     </span>
                   </div>
-                  {showLobby && <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} title={player.isReady ? "Ready" : "Not ready"} />}
+                  {showReadyFlow && <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} title={player.isReady ? "Ready" : "Not ready"} />}
                 </div>
               ))}
             </div>
           </section>
 
-          {showLobby && (
+          {showReadyFlow && (
             <section className="game-panel slim-panel">
-              <h3>Your Status</h3>
+              <h3>{showLobby ? "Your Status" : "Next Round"}</h3>
               <button
                 type="button"
                 className={`primary-button full-width ${self?.isReady ? "is-ready-btn" : ""}`}
                 onClick={() => onToggleReady(!self?.isReady)}
               >
-                {self?.isReady ? "Ready to Start!" : "Click when Ready"}
+                {self?.isReady ? (showLobby ? "Ready to Start!" : "Ready Confirmed") : (showLobby ? "Click when Ready" : "Confirm Ready")}
               </button>
               
               {isCreator && (
                 <button type="button" className={`full-width mt-2 ${allReady ? "ready-start-btn" : "secondary-button"}`} onClick={onStartRound} disabled={!allReady}>
-                  {allReady ? "🚀 Start Game" : "Waiting for players..."}
+                  {allReady ? (showLobby ? "🚀 Start Game" : "🚀 Start Next Round") : `Waiting for players... (${readyCount}/${playerCount})`}
                 </button>
+              )}
+            </section>
+          )}
+
+          {showPrivateNote && (
+            <section className="game-panel alert-panel">
+              <div className="alert-header">
+                <h3>Result / Info</h3>
+                <button className="dismiss-btn" onClick={() => setDismissedNote(lastNote)}>✕</button>
+              </div>
+              <p>{lastNote}</p>
+              {privateNoteCardId && (
+                <div className="private-card-showcase">
+                  <CardView card={{ instanceId: 'temp', cardId: privateNoteCardId as any }} compact />
+                </div>
               )}
             </section>
           )}
@@ -175,6 +200,104 @@ export function RoomPage({
                 <div className="stat-box"><strong>{readyCount}</strong> <span>Ready</span></div>
               </div>
               <p className="error-text">{message}</p>
+            </div>
+          ) : showBetweenRounds ? (
+            <>
+              <div className="game-panel round-over-panel">
+                <h2>Round Over!</h2>
+                <p>Everyone needs to confirm ready before the next round can begin.</p>
+
+                <div className="winners-circle">
+                  🏆 Winner(s): {state.roundWinnerIds?.map((id) => playerNameById(state, id)).join(", ")}
+                </div>
+
+                <div className="tokens-summary">
+                  {state.players?.map((player) => (
+                    <div key={player.id} className={`token-row ${player.isReady ? "is-ready-row" : ""}`}>
+                      <span>
+                        {player.name} {state.roundWinnerIds?.includes(player.id) ? "🌟" : ""}
+                      </span>
+                      <span style={{ color: "#f1c40f" }}>🪙 {player.tokens}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "32px", justifyContent: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className={`primary-button ${self?.isReady ? "is-ready-btn" : ""}`}
+                    onClick={() => onToggleReady(!self?.isReady)}
+                    style={{ width: "220px" }}
+                  >
+                    {self?.isReady ? "Ready Confirmed" : "Confirm Ready"}
+                  </button>
+                  {isCreator ? (
+                    <button
+                      type="button"
+                      className={allReady ? "ready-start-btn" : "secondary-button"}
+                      onClick={onStartRound}
+                      disabled={!allReady}
+                      style={{ width: "250px" }}
+                    >
+                      {allReady ? "🚀 Start Next Round" : `Waiting for everyone... (${readyCount}/${playerCount})`}
+                    </button>
+                  ) : (
+                    <p className="muted-text">{allReady ? "Host can start the next round now." : `Ready players: ${readyCount}/${playerCount}`}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="game-panel board-area">
+                <div className="board-header">
+                  <h3>Previous Round Table</h3>
+                  <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
+                </div>
+
+                <div className="table-grid">
+                  {state.players?.map((player) => (
+                    <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
+                      <div className="zone-nameplate">
+                        {player.name} {player.id === state.selfPlayerId && "(You)"}
+                        <span className="token-count">🪙 {player.tokens || 0}</span>
+                      </div>
+
+                      {(!player.discardPile || player.discardPile.length === 0) ? (
+                        <span className="muted-text" style={{ fontSize: "0.85rem" }}>No discards</span>
+                      ) : (
+                        <div className="discard-fan">
+                          {player.discardPile?.map((card, index) => (
+                            <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
+                              <CardView card={card} compact />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : showMatchOver ? (
+            <div className="game-panel round-over-panel">
+              <h2>Match Over!</h2>
+              <p>The full match is finished, so there is no start-next-round step anymore.</p>
+
+              <div className="winners-circle">
+                🏆 Match Winner(s): {state.matchWinnerIds?.map((id) => playerNameById(state, id)).join(", ")}
+              </div>
+
+              <div className="tokens-summary">
+                {state.players?.map((player) => (
+                  <div key={player.id} className="token-row">
+                    <span>{player.name} {state.matchWinnerIds?.includes(player.id) ? "🌟" : ""}</span>
+                    <span style={{ color: "#f1c40f" }}>🪙 {player.tokens}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="muted-text" style={{ marginTop: "24px" }}>
+                Leave this room and create a new game when you want to play another full match.
+              </p>
             </div>
           ) : (
             <>
@@ -219,161 +342,97 @@ export function RoomPage({
                 )}
               </div>
 
-              {state.phase === "round_over" ? (
-                <div className="game-panel round-over-panel">
-                  <h2>Round Over!</h2>
-                  <p>Everyone needs to confirm ready before the next round can begin.</p>
-                  
-                  <div className="winners-circle">
-                    🏆 Winner(s): {state.roundWinnerIds?.map(id => playerNameById(state, id)).join(", ")}
+              <div className="game-panel player-area">
+                {playStage === "select_card" ? (
+                  <div className="focus-hand-area">
+                    <div className="player-area-header">
+                      <h3>{isMyTurn ? "Your Turn - Select a Card" : "Your Hand"}</h3>
+                    </div>
+                    <div className="hand-cards-large">
+                      {self?.hand?.map((card) => (
+                        <div className="hand-card-wrapper" key={card.instanceId}>
+                          <CardView
+                            card={card}
+                            selectable={isMyTurn}
+                            selected={card.instanceId === selectedInstanceId}
+                            onClick={isMyTurn ? () => onSelectCard(card.instanceId) : undefined}
+                            spotlight={card.instanceId === selectedInstanceId}
+                          />
+                          {card.instanceId === selectedInstanceId && isMyTurn && (
+                            <button className="primary-button inline-play-btn" onClick={handleInitiatePlay}>
+                              Play Card
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-
-                  <div className="tokens-summary">
-                    {state.players?.map(p => (
-                      <div key={p.id} className="token-row">
-                        <span>
-                          {p.name} {state.roundWinnerIds?.includes(p.id) ? "🌟" : ""}
-                        </span>
-                        <span style={{color: '#f1c40f'}}>🪙 {p.tokens}</span>
+                ) : (
+                  <div className="focus-action-area">
+                    <div className="step-2-header">
+                      <button className="secondary-button" onClick={() => setPlayStage("select_card")}>← Back to Hand</button>
+                      <h3>You are playing: {selectedCardDef?.name}</h3>
+                    </div>
+                    
+                    <div className="play-stage-horizontal">
+                      <div className="stage-card-slot">
+                        <CardView card={selectedCard!} spotlight />
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="round-actions" style={{ display: 'flex', gap: '16px', marginTop: '32px', justifyContent: 'center' }}>
-                    <button
-                      type="button"
-                      className={`primary-button ${self?.isReady ? "is-ready-btn" : ""}`}
-                      onClick={() => onToggleReady(!self?.isReady)}
-                      style={{ width: "220px" }}
-                    >
-                      {self?.isReady ? "Ready Confirmed" : "Confirm Ready"}
-                    </button>
-                    {isCreator ? (
-                      <button
-                        type="button"
-                        className={allReady ? "ready-start-btn" : "secondary-button"}
-                        onClick={onStartRound}
-                        disabled={!allReady}
-                        style={{ width: "250px" }}
-                      >
-                        {allReady ? "🚀 Start Next Round" : `Waiting for everyone... (${readyCount}/${playerCount})`}
-                      </button>
-                    ) : (
-                      <p className="muted-text">{allReady ? "Host can start the next round now." : `Ready players: ${readyCount}/${playerCount}`}</p>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="game-panel player-area">
-                  <div className="player-area-header">
-                    <h3>{isMyTurn ? "Your Turn" : "Your Hand"}</h3>
-                  </div>
-
-                  {playStage === "select_card" ? (
-                    <div className="action-step-1">
-                      {isMyTurn && <p className="instruction-text">Select a card from your hand to play or discard.</p>}
-                      <div className="hand-dock-centered">
-                        {self?.hand?.map((card) => (
-                          <div className="hand-card-wrapper" key={card.instanceId}>
-                            <CardView
-                              card={card}
-                              selectable={isMyTurn}
-                              selected={card.instanceId === selectedInstanceId}
-                              onClick={isMyTurn ? () => onSelectCard(card.instanceId) : undefined}
-                            />
-                            {card.instanceId === selectedInstanceId && isMyTurn && (
-                              <button className="primary-button play-btn-overlay" onClick={handleInitiatePlay}>
-                                Play Card
-                              </button>
-                            )}
+                      <div className="stage-actions">
+                        {targetNeeded && (
+                          <div className="selection-group">
+                            <label className="dark-label">1. Choose a Target</label>
+                            <div className="selection-grid">
+                              {targetablePlayers.map(p => (
+                                <button 
+                                  key={p.id} 
+                                  className={`grid-btn ${targetPlayerId === p.id ? 'selected' : ''}`}
+                                  onClick={() => onTargetPlayerChange(p.id)}
+                                >
+                                  {p.name}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        ))}
+                        )}
+
+                        {guessNeeded && (
+                          <div className="selection-group">
+                            <label className="dark-label">2. Guess their Card</label>
+                            <div className="selection-grid">
+                              {[2, 3, 4, 5, 6, 7, 8].map(val => (
+                                <button 
+                                  key={val} 
+                                  className={`grid-btn ${guessedValue === val.toString() ? 'selected' : ''}`}
+                                  onClick={() => onGuessedValueChange(val.toString())}
+                                >
+                                  <span className="guess-val">{val}</span>
+                                  <span className="guess-name">{getCardDef(cardIdByValue(val)).name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          className="primary-button play-btn"
+                          disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId) || (guessNeeded && !guessedValue)}
+                          onClick={handleConfirmPlay}
+                        >
+                          Confirm & Play
+                        </button>
                       </div>
                     </div>
-                  ) : (
-                    <div className="action-step-2">
-                      <div className="step-2-header">
-                        <button className="secondary-button" onClick={() => setPlayStage("select_card")}>← Cancel</button>
-                        <h4>Configure Play</h4>
-                      </div>
-                      
-                      <div className="play-stage-horizontal">
-                        
-                        {/* THE FIXED CARD SLOT */}
-                        <div className={`stage-card-slot ${!selectedCard ? "is-empty" : ""}`}>
-                          {selectedCard ? <CardView card={selectedCard} spotlight /> : <div className="empty-slot">Select a card</div>}
-                        </div>
-
-                        <div className="stage-actions">
-                          {targetNeeded && (
-                            <div className="selection-group">
-                              <label className="dark-label">1. Choose a Target</label>
-                              <div className="selection-grid">
-                                {targetablePlayers.map(p => (
-                                  <button 
-                                    key={p.id} 
-                                    className={`grid-btn ${targetPlayerId === p.id ? 'selected' : ''}`}
-                                    onClick={() => onTargetPlayerChange(p.id)}
-                                  >
-                                    {p.name}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {guessNeeded && (
-                            <div className="selection-group">
-                              <label className="dark-label">2. Guess their Card</label>
-                              <div className="selection-grid">
-                                {[2, 3, 4, 5, 6, 7, 8].map(val => (
-                                  <button 
-                                    key={val} 
-                                    className={`grid-btn ${guessedValue === val.toString() ? 'selected' : ''}`}
-                                    onClick={() => onGuessedValueChange(val.toString())}
-                                  >
-                                    <span className="guess-val">{val}</span>
-                                    <span className="guess-name">{getCardDef(cardIdByValue(val)).name}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          <button
-                            type="button"
-                            className="primary-button play-btn"
-                            disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId) || (guessNeeded && !guessedValue)}
-                            onClick={handleConfirmPlay}
-                          >
-                            Confirm & Play
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </section>
 
         <aside className="table-sidebar table-right-sidebar">
-          {showPrivateNote && (
-            <section className="game-panel alert-panel">
-              <div className="alert-header">
-                <h3>Private Info</h3>
-                <button className="dismiss-btn" onClick={() => setDismissedNote(lastNote)}>✕</button>
-              </div>
-              <p>{lastNote}</p>
-              {privateNoteCardId && (
-                <div className="private-card-showcase">
-                  <CardView card={{ instanceId: 'temp', cardId: privateNoteCardId as any }} compact />
-                </div>
-              )}
-            </section>
-          )}
-
           <section className="game-panel activity-panel">
             <h3>Activity Log</h3>
             <ActivityFeed events={state.log || []} state={state} />

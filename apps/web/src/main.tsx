@@ -17,18 +17,19 @@ const socket: Socket = io("http://localhost:3001");
 function App() {
   const [roomId, setRoomId] = React.useState("love-letter");
   const [playerName, setPlayerName] = React.useState("");
-  const [joinedRoomId, setJoinedRoomId] = React.useState("");
   const [state, setState] = React.useState<PlayerViewState | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = React.useState<string | null>(null);
   const [targetPlayerId, setTargetPlayerId] = React.useState<string>("");
   const [guessedValue, setGuessedValue] = React.useState("2");
   const [message, setMessage] = React.useState("Create or join a room to begin.");
   const [lastNote, setLastNote] = React.useState<string>("");
+  const [pendingRoomAction, setPendingRoomAction] = React.useState<"create" | "join" | null>(null);
 
   React.useEffect(() => {
     const onState = (nextState: PlayerViewState) => {
       setState(nextState);
-      setJoinedRoomId(nextState.roomId);
+      setPendingRoomAction(null);
+      setMessage(`Connected to room ${nextState.roomId}.`);
     };
 
     const onError = (payload: { reason?: string }) => {
@@ -51,6 +52,7 @@ function App() {
   }, []);
 
   const self = state?.players.find((player) => player.id === state.selfPlayerId) ?? null;
+  const currentRoomId = state?.roomId ?? "";
   const selectedCard = self?.hand.find((card) => card.instanceId === selectedInstanceId) ?? null;
   const selectedCardDef = selectedCard ? getCardDef(selectedCard.cardId) : null;
   const isMyTurn = Boolean(state && self && state.round?.currentPlayerId === self.id && state.phase === "in_round");
@@ -110,7 +112,7 @@ function App() {
       return;
     }
 
-    setJoinedRoomId(trimmedRoomId);
+    setPendingRoomAction(mode);
     setMessage(mode === "create" ? "Creating room..." : "Joining room...");
     socket.emit(mode === "create" ? "room:create" : "room:join", {
       roomId: trimmedRoomId,
@@ -119,17 +121,17 @@ function App() {
   }
 
   function startRound() {
-    if (!joinedRoomId) return;
-    socket.emit("round:start", { roomId: joinedRoomId });
+    if (!currentRoomId) return;
+    socket.emit("round:start", { roomId: currentRoomId });
     setMessage("Starting round...");
     setLastNote("");
   }
 
   function playSelectedCard() {
-    if (!joinedRoomId || !selectedCard || !selectedCardDef) return;
+    if (!currentRoomId || !selectedCard || !selectedCardDef) return;
 
     socket.emit("card:play", {
-      roomId: joinedRoomId,
+      roomId: currentRoomId,
       instanceId: selectedCard.instanceId,
       targetPlayerId: targetNeeded ? targetPlayerId : undefined,
       guessedValue: guessNeeded ? Number(guessedValue) : undefined,
@@ -145,193 +147,219 @@ function App() {
     (targetNeeded && !targetPlayerId) ||
     (guessNeeded && !guessedValue);
 
+  if (!state) {
+    return (
+      <div className="app-shell">
+        <main className="entry-shell">
+          <section className="entry-card">
+            <div className="entry-header">
+              <h1>Love Letter</h1>
+              <p>Enter a room and name first. The game table appears only after you’re actually connected.</p>
+            </div>
+
+            <div className="entry-grid">
+              <label>
+                Room ID
+                <input value={roomId} onChange={(event) => setRoomId(event.target.value)} placeholder="love-letter" />
+              </label>
+              <label>
+                Name
+                <input value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Your name" />
+              </label>
+            </div>
+
+            <div className="button-row">
+              <button type="button" className="primary-button" onClick={() => joinRoom("create")} disabled={pendingRoomAction !== null}>
+                {pendingRoomAction === "create" ? "Creating..." : "Create room"}
+              </button>
+              <button type="button" className="secondary-button" onClick={() => joinRoom("join")} disabled={pendingRoomAction !== null}>
+                {pendingRoomAction === "join" ? "Joining..." : "Join room"}
+              </button>
+            </div>
+
+            <div className="entry-feedback">
+              <p className="helper-text">{message}</p>
+              {lastNote ? <p className="note-box">{lastNote}</p> : null}
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Love Letter</p>
-          <h1>Courtly play, very little clutter.</h1>
-          <p className="hero-copy">
-            A simple room-based table for testing the classic game flow while we keep the interface intentionally calm.
-          </p>
-        </div>
-        <div className="status-panel">
-          <span className={`status-pill${isMyTurn ? " is-active" : ""}`}>
-            {state ? (isMyTurn ? "Your turn" : "Waiting") : "Offline"}
-          </span>
-          <span className="status-pill">{joinedRoomId ? `Room ${joinedRoomId}` : "No room yet"}</span>
-        </div>
-      </header>
-
-      <main className="layout">
-        <section className="panel lobby-panel">
-          <h2>Seat Yourself</h2>
-          <label>
-            Room ID
-            <input value={roomId} onChange={(event) => setRoomId(event.target.value)} placeholder="love-letter" />
-          </label>
-          <label>
-            Name
-            <input value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="Annette admirer" />
-          </label>
-          <div className="button-row">
-            <button type="button" className="primary-button" onClick={() => joinRoom("create")}>
-              Create room
-            </button>
-            <button type="button" className="secondary-button" onClick={() => joinRoom("join")}>
-              Join room
-            </button>
+      <main className="game-shell">
+        <section className="topbar">
+          <div className="topbar-main">
+            <h1>Room {currentRoomId}</h1>
+            <p>{state.phase.replaceAll("_", " ")}</p>
           </div>
-          <p className="helper-text">{message}</p>
-          {lastNote ? <p className="note-box">{lastNote}</p> : null}
+          <div className="topbar-meta">
+            <span className={`status-pill${isMyTurn ? " is-active" : ""}`}>{isMyTurn ? "Your turn" : "Waiting"}</span>
+            <span className="status-pill">Deck {state.round?.deckCount ?? 0}</span>
+            <span className="status-pill">Turn {state.round?.turnNumber ?? 0}</span>
+          </div>
         </section>
 
-        <section className="panel board-panel">
-          <div className="board-header">
-            <div>
-              <h2>Table</h2>
-              <p className="muted">
-                {state
-                  ? `Phase: ${state.phase.replaceAll("_", " ")}`
-                  : "Join a room to receive live state."}
-              </p>
-            </div>
-            <div className="round-meta">
-              <span>Deck {state?.round?.deckCount ?? 0}</span>
-              <span>Turn {state?.round?.turnNumber ?? 0}</span>
-            </div>
-          </div>
-
-          <div className="players-grid">
-            {state?.players.map((player) => (
-              <article key={player.id} className={`player-tile${player.id === state.selfPlayerId ? " is-self" : ""}`}>
-                <div className="player-heading">
-                  <div>
-                    <strong>{player.name}</strong>
-                    <p>
-                      {player.status}
-                      {player.protectedUntilNextTurn ? " • protected" : ""}
-                    </p>
-                  </div>
-                  <span className="token-badge">{player.tokens} token{player.tokens === 1 ? "" : "s"}</span>
-                </div>
-                <p className="muted small-copy">Hand {player.handCount}</p>
-                <div className="discard-row">
-                  {player.discardPile.length === 0 ? <span className="empty-label">No discards yet</span> : null}
-                  {player.discardPile.map((card) => (
-                    <CardView key={card.instanceId} card={card} compact />
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <div className="board-footer">
-            <div>
-              <h3>Removed cards</h3>
-              <div className="discard-row">
-                {state?.round?.visibleRemovedCards.length ? (
-                  state.round.visibleRemovedCards.map((card) => <CardView key={card.instanceId} card={card} compact />)
-                ) : (
-                  <span className="empty-label">Only visible in 2-player rounds.</span>
-                )}
-              </div>
-            </div>
-            <div className="round-actions">
+        <div className="game-layout">
+          <aside className="panel sidebar-panel">
+            <section className="sidebar-section">
+              <h2>Room</h2>
+              <p className="helper-text">{message}</p>
               <button
                 type="button"
                 className="primary-button"
                 onClick={startRound}
-                disabled={!state || state.players.length < 2 || state.phase === "in_round" || state.phase === "match_over"}
+                disabled={state.players.length < 2 || state.phase === "in_round" || state.phase === "match_over"}
               >
-                {state?.phase === "round_over" ? "Start next round" : "Start round"}
+                {state.phase === "round_over" ? "Start next round" : "Start round"}
               </button>
-              {state?.roundWinnerIds.length ? (
-                <p className="helper-text">
-                  Round winners: {state.roundWinnerIds.map((playerId) => playerNameById(state, playerId)).join(", ")}
-                </p>
-              ) : null}
-              {state?.matchWinnerIds.length ? (
-                <p className="note-box">
-                  Match winner: {state.matchWinnerIds.map((playerId) => playerNameById(state, playerId)).join(", ")}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </section>
+            </section>
 
-        <section className="panel hand-panel">
-          <div className="board-header">
-            <div>
-              <h2>Your hand</h2>
-              <p className="muted">{isMyTurn ? "Choose a card to play." : "Your hand stays visible to you only."}</p>
-            </div>
-          </div>
-
-          <div className="hand-row">
-            {self?.hand.map((card) => (
-              <CardView
-                key={card.instanceId}
-                card={card}
-                selectable={isMyTurn}
-                selected={card.instanceId === selectedInstanceId}
-                onClick={isMyTurn ? () => setSelectedInstanceId(card.instanceId) : undefined}
-              />
-            ))}
-            {!self?.hand.length ? <span className="empty-label">No hand yet. Start a round.</span> : null}
-          </div>
-
-          <div className="action-panel">
-            <div>
-              <h3>Play selection</h3>
-              <p className="muted">
-                {selectedCardDef ? `${selectedCardDef.name} (${selectedCardDef.value})` : "Pick a card from your hand."}
-              </p>
-            </div>
-
-            {targetNeeded ? (
-              <label>
-                Target
-                <select value={targetPlayerId} onChange={(event) => setTargetPlayerId(event.target.value)}>
-                  {targetablePlayers.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {state.roundWinnerIds.length ? (
+              <section className="sidebar-section">
+                <h3>Round result</h3>
+                <p className="helper-text">{state.roundWinnerIds.map((playerId) => playerNameById(state, playerId)).join(", ")}</p>
+              </section>
             ) : null}
 
-            {guessNeeded ? (
-              <label>
-                Guard guess
-                <select value={guessedValue} onChange={(event) => setGuessedValue(event.target.value)}>
-                  {[2, 3, 4, 5, 6, 7, 8].map((value) => (
-                    <option key={value} value={value}>
-                      {value} • {getCardDef(cardIdByValue(value)).name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {state.matchWinnerIds.length ? (
+              <section className="sidebar-section">
+                <h3>Match result</h3>
+                <p className="note-box">{state.matchWinnerIds.map((playerId) => playerNameById(state, playerId)).join(", ")}</p>
+              </section>
             ) : null}
 
-            <button type="button" className="primary-button" disabled={playDisabled} onClick={playSelectedCard}>
-              Play card
-            </button>
-          </div>
-        </section>
+            {lastNote ? (
+              <section className="sidebar-section">
+                <h3>Private info</h3>
+                <p className="note-box">{lastNote}</p>
+              </section>
+            ) : null}
 
-        <section className="panel log-panel">
-          <h2>Recent table talk</h2>
-          <div className="log-list">
-            {(state ? state.log.slice(-8).reverse() : []).map((event, index) => (
-              <div key={`${event.type}-${index}`} className="log-item">
-                {state ? formatEvent(event, state) : ""}
+            <section className="sidebar-section">
+              <h3>Activity</h3>
+              <div className="log-list">
+                {state.log.length === 0 ? <span className="empty-label">No actions yet.</span> : null}
+                {state.log.slice(-8).reverse().map((event, index) => (
+                  <div key={`${event.type}-${index}`} className="log-item">
+                    {formatEvent(event, state)}
+                  </div>
+                ))}
               </div>
-            ))}
-            {!state?.log.length ? <span className="empty-label">No actions yet.</span> : null}
+            </section>
+          </aside>
+
+          <div className="game-main">
+            <section className="panel board-panel">
+              <div className="section-header">
+                <div>
+                  <h2>Players</h2>
+                  <p className="muted">Hands stay hidden. Discards and tokens stay public.</p>
+                </div>
+              </div>
+
+              <div className="players-grid">
+                {state.players.map((player) => (
+                  <article key={player.id} className={`player-tile${player.id === state.selfPlayerId ? " is-self" : ""}`}>
+                    <div className="player-heading">
+                      <div>
+                        <strong>{player.name}</strong>
+                        <p>
+                          {player.status}
+                          {player.protectedUntilNextTurn ? " • protected" : ""}
+                        </p>
+                      </div>
+                      <span className="token-badge">{player.tokens} token{player.tokens === 1 ? "" : "s"}</span>
+                    </div>
+                    <p className="muted small-copy">Hand {player.handCount}</p>
+                    <div className="discard-row">
+                      {player.discardPile.length === 0 ? <span className="empty-label">No discards</span> : null}
+                      {player.discardPile.map((card) => (
+                        <CardView key={card.instanceId} card={card} compact />
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              {state.round?.visibleRemovedCards.length ? (
+                <div className="removed-section">
+                  <h3>Visible removed cards</h3>
+                  <div className="discard-row">
+                    {state.round.visibleRemovedCards.map((card) => (
+                      <CardView key={card.instanceId} card={card} compact />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="panel hand-panel">
+              <div className="section-header">
+                <div>
+                  <h2>Your hand</h2>
+                  <p className="muted">{isMyTurn ? "Choose a card, then confirm the play." : "You can review your hand while you wait."}</p>
+                </div>
+              </div>
+
+              <div className="hand-row">
+                {self?.hand.map((card) => (
+                  <CardView
+                    key={card.instanceId}
+                    card={card}
+                    selectable={isMyTurn}
+                    selected={card.instanceId === selectedInstanceId}
+                    onClick={isMyTurn ? () => setSelectedInstanceId(card.instanceId) : undefined}
+                  />
+                ))}
+                {!self?.hand.length ? <span className="empty-label">No hand yet. Start a round.</span> : null}
+              </div>
+
+              <div className="action-panel">
+                <div className="action-summary">
+                  <h3>Play</h3>
+                  <p className="muted">
+                    {selectedCardDef ? `${selectedCardDef.name} (${selectedCardDef.value})` : "Select one card from your hand."}
+                  </p>
+                </div>
+
+                <div className="action-controls">
+                  {targetNeeded ? (
+                    <label>
+                      Target
+                      <select value={targetPlayerId} onChange={(event) => setTargetPlayerId(event.target.value)}>
+                        {targetablePlayers.map((player) => (
+                          <option key={player.id} value={player.id}>
+                            {player.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  {guessNeeded ? (
+                    <label>
+                      Guard guess
+                      <select value={guessedValue} onChange={(event) => setGuessedValue(event.target.value)}>
+                        {[2, 3, 4, 5, 6, 7, 8].map((value) => (
+                          <option key={value} value={value}>
+                            {value} • {getCardDef(cardIdByValue(value)).name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  <button type="button" className="primary-button" disabled={playDisabled} onClick={playSelectedCard}>
+                    Play card
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
       </main>
     </div>
   );

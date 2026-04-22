@@ -130,74 +130,133 @@ input::placeholder {
 /* --- AUTHENTIC CARD STYLING --- */
 .card-view {
   width: 156px;
-  height: 220px; 
-  border: 2px solid #d6dee6;
-  border-radius: 14px;
-  padding: 12px;
-  background: #fff;
+  height: 244px;
+  border: 2px solid rgba(244, 231, 202, 0.92);
+  border-radius: 18px;
+  padding: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 238, 0.98), rgba(236, 221, 190, 0.94));
   color: #18212b;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  box-shadow: 2px 4px 12px rgba(0,0,0,0.1);
-  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
 .card-view.is-clickable:hover {
   transform: translateY(-8px);
-  box-shadow: 4px 12px 24px rgba(0,0,0,0.15);
+  box-shadow:
+    0 18px 30px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .card-view.is-selected {
   outline: none;
-  border-color: #1f6feb;
+  border-color: #f4d58d;
   transform: translateY(-16px) scale(1.05);
-  box-shadow: 0 16px 32px rgba(31, 111, 235, 0.3);
+  box-shadow:
+    0 20px 36px rgba(12, 18, 26, 0.42),
+    0 0 0 3px rgba(244, 213, 141, 0.3);
 }
 
 .card-view-spotlight {
   transform: scale(1.05);
-  box-shadow: 0 16px 32px rgba(0,0,0,0.4);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.4);
 }
 
-.card-view-header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  line-height: 1;
-}
-
-.card-view-rank {
-  font-size: 1.8rem;
-  font-weight: 800;
-  color: var(--card-accent);
-}
-
-.card-view-mini-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.card-view-center-art {
-  flex: 1;
+.card-view-value-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
   display: grid;
   place-items: center;
+  z-index: 2;
+  color: #fff8e8;
+  font-family: Baskerville, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1;
+  background:
+    radial-gradient(circle at 30% 30%, #f4d58d 0%, #d4a94c 42%, #7b5a22 100%);
+  border: 2px solid rgba(255, 244, 214, 0.9);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.28),
+    inset 0 1px 2px rgba(255, 255, 255, 0.4);
 }
 
-.card-view-center-art svg {
-  width: 64px;
-  height: 64px;
-  opacity: 0.8;
+.card-view-art-shell {
+  flex: 1;
+  min-height: 0;
+  width: calc(100% + 20px);
+  margin: -10px -10px -10px;
+  overflow: hidden;
+  background: #efe4c8;
+  position: relative;
+}
+
+.card-view-art-image,
+.card-view-art-fallback {
+  width: 100%;
+  height: 100%;
+}
+
+.card-view-art-image {
+  display: block;
+  height: calc(100% + 16px);
+  object-fit: cover;
+  object-position: top center;
+  background: transparent;
+}
+
+.card-view-art-fallback {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  text-align: center;
+  font-family: Baskerville, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: 1rem;
+  color: #4d3a2a;
 }
 
 .card-view-footer {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  min-height: 0;
+  padding: 8px 10px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  font-size: 1.1rem;
+  background:
+    linear-gradient(180deg, rgba(88, 19, 24, 0.96), rgba(54, 10, 15, 0.98));
+  color: #fdf2d4;
+  border-top: 2px solid rgba(255, 224, 160, 0.45);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 245, 221, 0.18);
+  z-index: 2;
+}
+
+.card-view-footer strong {
+  display: block;
+  width: 100%;
+  font-family: Baskerville, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  font-size: 0.92rem;
   font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding-top: 8px;
-  border-top: 1px solid #eee;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
+  white-space: normal;
+  text-wrap: balance;
 }
 
 .card-view-hidden {
@@ -214,36 +273,67 @@ input::placeholder {
 
 .card-view-compact {
   width: 88px;
-  height: 124px;
+  height: 138px;
   padding: 6px;
 }
-.card-view-compact .card-view-rank { font-size: 1.2rem; }
-.card-view-compact .card-view-center-art svg { width: 32px; height: 32px; }
-.card-view-compact .card-view-footer { 
-  font-size: 0.65rem; 
-  padding-top: 4px;
-  letter-spacing: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.card-view-compact .card-view-value-badge {
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  font-size: 0.74rem;
+  border-width: 1.5px;
+}
+.card-view-compact .card-view-art-shell {
+  width: calc(100% + 12px);
+  margin: -6px -6px -6px;
+}
+.card-view-compact .card-view-footer {
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  padding: 5px 5px 6px;
+}
+.card-view-compact .card-view-footer strong {
+  font-size: 0.48rem;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .card-view-mini {
   width: 72px;
-  height: 102px;
+  height: 114px;
   padding: 5px;
 }
 
-.card-view-mini .card-view-rank { font-size: 1rem; }
-.card-view-mini .card-view-mini-icon svg { width: 16px; height: 16px; }
-.card-view-mini .card-view-center-art svg { width: 26px; height: 26px; }
+.card-view-mini .card-view-value-badge {
+  top: 5px;
+  left: 5px;
+  width: 18px;
+  height: 18px;
+  font-size: 0.64rem;
+  border-width: 1.5px;
+}
+.card-view-mini .card-view-art-shell {
+  width: calc(100% + 10px);
+  margin: -5px -5px -5px;
+}
 .card-view-mini .card-view-footer {
-  font-size: 0.58rem;
-  padding-top: 4px;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  padding: 4px 4px 5px;
+}
+.card-view-mini .card-view-footer strong {
+  font-size: 0.4rem;
+  line-height: 1.05;
+  letter-spacing: 0.03em;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .card-view-mini .card-view-hidden-crest {

@@ -1,0 +1,10 @@
+{
+  "name": "@game-site/web",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@game-site/shared": "file:../../packages/shared",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

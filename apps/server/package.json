@@ -1,0 +1,9 @@
+{
+  "name": "@game-site/server",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@game-site/shared": "file:../../packages/shared",
+    "socket.io": "^4.8.0"
+  }
+}

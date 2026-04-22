@@ -4,6 +4,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./cards": "./src/cards.ts",
+    "./engine": "./src/engine.ts",
+    "./rules": "./src/rules.ts",
+    "./types": "./src/types.ts",
     "./*": "./src/*"
   }
 }

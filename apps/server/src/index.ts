@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 
 import { Server } from "socket.io";
 
-import { addPlayer, createGame, playCardAction, startRound, toPlayerViewState } from "@game-site/shared";
+import { addPlayer, createGame, playCardAction, startRound, toPlayerViewState } from "@game-site/shared/engine";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {

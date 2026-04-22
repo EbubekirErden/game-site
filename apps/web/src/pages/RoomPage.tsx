@@ -67,6 +67,11 @@ export function RoomPage({
     "Round over. Everyone can confirm ready for the next round.",
     "Match over.",
   ].includes(message) ? message : "";
+  const statusTone = statusMessage.startsWith("Played ")
+    ? "success"
+    : statusMessage.startsWith("Rejoining room") || statusMessage.startsWith("Connection lost")
+      ? "info"
+      : "error";
   
   const guessNeeded = selectedCardDef?.id === "guard";
   const targetNeeded =
@@ -199,7 +204,7 @@ export function RoomPage({
           )}
           <LoveLetterInfoDrawer
             buttonClassName="info-trigger-button info-trigger-button-room"
-            buttonLabel="i"
+            buttonLabel="ℹ"
             buttonTitle="Open Love Letter rules and card guide"
           />
           <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
@@ -274,8 +279,8 @@ export function RoomPage({
           ) : showBetweenRounds ? (
             <>
               {statusMessage && (
-                <div className="game-panel status-banner-panel">
-                  <p className="error-text">{statusMessage}</p>
+                <div className={`game-panel status-banner-panel is-${statusTone}`}>
+                  <p className={`status-banner-text is-${statusTone}`}>{statusMessage}</p>
                 </div>
               )}
               <div className="game-panel round-over-panel">
@@ -386,8 +391,8 @@ export function RoomPage({
           ) : (
             <>
               {statusMessage && (
-                <div className="game-panel status-banner-panel">
-                  <p className="error-text">{statusMessage}</p>
+                <div className={`game-panel status-banner-panel is-${statusTone}`}>
+                  <p className={`status-banner-text is-${statusTone}`}>{statusMessage}</p>
                 </div>
               )}
               <div className="game-panel deck-status-panel">

@@ -360,7 +360,7 @@ input::placeholder {
 .table-layout {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
 }
 
 .table-topbar {
@@ -605,16 +605,14 @@ input::placeholder {
   grid-template-columns: 240px 1fr 280px;
   gap: 20px;
   padding: 20px;
-  flex: 1;
-  overflow: hidden;
   background: radial-gradient(circle at center, #243040 0%, #18212b 100%);
+  align-items: start;
 }
 
 .table-sidebar, .table-center {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  overflow-y: auto;
 }
 
 .game-panel {
@@ -1007,14 +1005,39 @@ input::placeholder {
 .status-banner-panel {
   padding-top: 14px;
   padding-bottom: 14px;
-  border-color: rgba(255, 123, 114, 0.35);
-  background: rgba(78, 26, 26, 0.32);
   animation: panel-fade-in 180ms ease-out;
 }
 
-.status-banner-panel .error-text {
+.status-banner-panel.is-error {
+  border-color: rgba(255, 123, 114, 0.35);
+  background: rgba(78, 26, 26, 0.32);
+}
+
+.status-banner-panel.is-success {
+  border-color: rgba(46, 204, 113, 0.35);
+  background: rgba(18, 74, 44, 0.28);
+}
+
+.status-banner-panel.is-info {
+  border-color: rgba(74, 163, 255, 0.35);
+  background: rgba(19, 48, 89, 0.28);
+}
+
+.status-banner-text {
   margin: 0;
   font-size: 0.95rem;
+}
+
+.status-banner-text.is-error {
+  color: #ff7b72;
+}
+
+.status-banner-text.is-success {
+  color: #a9f3c6;
+}
+
+.status-banner-text.is-info {
+  color: #b4dcff;
 }
 
 /* --- ROUND OVER SCOREBOARD --- */

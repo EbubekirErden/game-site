@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addPlayer, createGame, playCardAction, startRound } from "./engine.js";
+import { addPlayer, createGame, playCardAction, setPlayerReady, startRound } from "./engine.js";
 import type { CardInstance, GameState, PlayerID } from "./types.js";
 
 function makeCard(cardId: CardInstance["cardId"], instanceId: string): CardInstance {
@@ -9,10 +9,11 @@ function makeCard(cardId: CardInstance["cardId"], instanceId: string): CardInsta
 }
 
 function setupStartedGame(playerNames: string[]): GameState {
-  let state = createGame("room-1");
+  let state = createGame("room-1", "p1");
 
   for (const [index, name] of playerNames.entries()) {
     state = addPlayer(state, `p${index + 1}`, name);
+    state = setPlayerReady(state, `p${index + 1}`, true);
   }
 
   return startRound(state);

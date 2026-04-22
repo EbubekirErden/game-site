@@ -51,6 +51,10 @@ function getWinningTokenCount(playerCount: number): number {
   return 4;
 }
 
+export function canStartLobbyRound(state: GameState): boolean {
+  return state.phase === "lobby" && state.players.length >= 2 && state.players.every((player) => player.isReady);
+}
+
 function drawToActivePlayer(state: GameState, playerId: PlayerID): GameState {
   if (!state.round) return state;
 
@@ -157,9 +161,10 @@ function getRoundWinners(players: PlayerState[]): PlayerID[] {
     .map((player) => player.id);
 }
 
-export function createGame(roomId: RoomID): GameState {
+export function createGame(roomId: RoomID, creatorId: PlayerID): GameState {
   return {
     roomId,
+    creatorId,
     phase: "lobby",
     players: [],
     round: null,
@@ -181,6 +186,7 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
     status: "active",
     protectedUntilNextTurn: false,
     tokens: 0,
+    isReady: false,
   };
 
   return {
@@ -190,7 +196,28 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
   };
 }
 
+export function setPlayerReady(state: GameState, playerId: PlayerID, isReady: boolean): GameState {
+  if (state.phase !== "lobby") return state;
+
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player || player.isReady === isReady) return state;
+
+  return {
+    ...state,
+    players: state.players.map((candidate) =>
+      candidate.id === playerId
+        ? {
+            ...candidate,
+            isReady,
+          }
+        : candidate,
+    ),
+    log: [...state.log, { type: "player_ready_changed", playerId, isReady }],
+  };
+}
+
 export function startRound(state: GameState): GameState {
+  if (state.phase === "lobby" && !canStartLobbyRound(state)) return state;
   if (state.players.length < 2 || state.phase === "match_over") return state;
 
   const deck = buildDeck();
@@ -207,6 +234,7 @@ export function startRound(state: GameState): GameState {
     discardPile: [],
     status: "active" as const,
     protectedUntilNextTurn: false,
+    isReady: false,
   }));
 
   const firstPlayerId = starterId;
@@ -315,6 +343,7 @@ export function playCardAction(
 export function toPublicGameState(state: GameState): PublicGameState {
   return {
     roomId: state.roomId,
+    creatorId: state.creatorId,
     phase: state.phase,
     players: state.players.map((player) => ({
       id: player.id,
@@ -324,6 +353,7 @@ export function toPublicGameState(state: GameState): PublicGameState {
       status: player.status,
       protectedUntilNextTurn: player.protectedUntilNextTurn,
       tokens: player.tokens,
+      isReady: player.isReady,
     })),
     round: state.round
       ? {
@@ -354,6 +384,7 @@ export function toPlayerViewState(state: GameState, selfPlayerId: PlayerID): Pla
       status: player.status,
       protectedUntilNextTurn: player.protectedUntilNextTurn,
       tokens: player.tokens,
+      isReady: player.isReady,
     })),
   };
 }

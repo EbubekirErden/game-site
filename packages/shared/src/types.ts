@@ -57,6 +57,7 @@ export interface PlayerState {
   status: PlayerStatus;
   protectedUntilNextTurn: boolean;
   tokens: number;
+  isReady: boolean;
 }
 
 export interface PublicPlayerState {
@@ -67,6 +68,7 @@ export interface PublicPlayerState {
   status: PlayerStatus;
   protectedUntilNextTurn: boolean;
   tokens: number;
+  isReady: boolean;
 }
 
 export interface RoundState {
@@ -81,6 +83,7 @@ export interface RoundState {
 
 export interface GameState {
   roomId: RoomID;
+  creatorId: PlayerID;
   phase: GamePhase;
   players: PlayerState[];
   round: RoundState | null;
@@ -91,6 +94,7 @@ export interface GameState {
 
 export type GameEvent =
   | { type: "player_joined"; playerId: PlayerID; name: string }
+  | { type: "player_ready_changed"; playerId: PlayerID; isReady: boolean }
   | { type: "round_started" }
   | { type: "card_drawn"; playerId: PlayerID }
   | { type: "card_played"; playerId: PlayerID; cardId: CardID }
@@ -106,6 +110,7 @@ export type GameEvent =
 
 export interface PublicGameState {
   roomId: RoomID;
+  creatorId: PlayerID;
   phase: GamePhase;
   players: PublicPlayerState[];
   round: {

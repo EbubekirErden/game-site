@@ -142,3 +142,23 @@ test("round end breaks ties with discard pile totals", () => {
   assert.equal(result.state?.phase, "round_over");
   assert.deepEqual(result.state?.roundWinnerIds, ["p1"]);
 });
+
+test("next round waits for everyone to confirm ready again", () => {
+  let state = setupStartedGame(["Ava", "Ben"]);
+  state = {
+    ...state,
+    phase: "round_over",
+    roundWinnerIds: ["p1"],
+  };
+
+  const blockedStart = startRound(state);
+  assert.equal(blockedStart, state);
+
+  state = setPlayerReady(state, "p1", true);
+  state = setPlayerReady(state, "p2", true);
+
+  const restarted = startRound(state);
+  assert.equal(restarted.phase, "in_round");
+  assert.ok(restarted.round);
+  assert.equal(restarted.players.every((player) => player.isReady === false), true);
+});

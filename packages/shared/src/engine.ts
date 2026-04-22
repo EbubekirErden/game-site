@@ -59,6 +59,10 @@ export function canStartLobbyRound(state: GameState): boolean {
   return state.phase === "lobby" && state.players.length >= 2 && state.players.every((player) => player.isReady);
 }
 
+export function canStartReadyRound(state: GameState): boolean {
+  return (state.phase === "lobby" || state.phase === "round_over") && state.players.length >= 2 && state.players.every((player) => player.isReady);
+}
+
 function drawToActivePlayer(state: GameState, playerId: PlayerID): GameState {
   if (!state.round) return state;
 
@@ -201,7 +205,7 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
 }
 
 export function setPlayerReady(state: GameState, playerId: PlayerID, isReady: boolean): GameState {
-  if (state.phase !== "lobby") return state;
+  if (state.phase !== "lobby" && state.phase !== "round_over") return state;
 
   const player = state.players.find((candidate) => candidate.id === playerId);
   if (!player || player.isReady === isReady) return state;
@@ -247,7 +251,7 @@ export function removePlayer(state: GameState, playerId: PlayerID): GameState {
 }
 
 export function startRound(state: GameState): GameState {
-  if (state.phase === "lobby" && !canStartLobbyRound(state)) return state;
+  if ((state.phase === "lobby" || state.phase === "round_over") && !canStartReadyRound(state)) return state;
   if (state.players.length < 2 || state.phase === "match_over") return state;
 
   const deck = buildDeck();

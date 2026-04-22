@@ -222,6 +222,7 @@ export function RoomPage({
               {state.phase === "round_over" ? (
                 <div className="game-panel round-over-panel">
                   <h2>Round Over!</h2>
+                  <p>Everyone needs to confirm ready before the next round can begin.</p>
                   
                   <div className="winners-circle">
                     🏆 Winner(s): {state.roundWinnerIds?.map(id => playerNameById(state, id)).join(", ")}
@@ -239,13 +240,26 @@ export function RoomPage({
                   </div>
 
                   <div className="round-actions" style={{ display: 'flex', gap: '16px', marginTop: '32px', justifyContent: 'center' }}>
-                    {/* Bypassed the backend 'Ready' requirement since the server ignores it here */}
+                    <button
+                      type="button"
+                      className={`primary-button ${self?.isReady ? "is-ready-btn" : ""}`}
+                      onClick={() => onToggleReady(!self?.isReady)}
+                      style={{ width: "220px" }}
+                    >
+                      {self?.isReady ? "Ready Confirmed" : "Confirm Ready"}
+                    </button>
                     {isCreator ? (
-                      <button className="ready-start-btn" onClick={onStartRound} style={{ width: '250px' }}>
-                        🚀 Start Next Round
+                      <button
+                        type="button"
+                        className={allReady ? "ready-start-btn" : "secondary-button"}
+                        onClick={onStartRound}
+                        disabled={!allReady}
+                        style={{ width: "250px" }}
+                      >
+                        {allReady ? "🚀 Start Next Round" : `Waiting for everyone... (${readyCount}/${playerCount})`}
                       </button>
                     ) : (
-                      <p className="muted-text">Waiting for the host to start the next round...</p>
+                      <p className="muted-text">{allReady ? "Host can start the next round now." : `Ready players: ${readyCount}/${playerCount}`}</p>
                     )}
                   </div>
                 </div>

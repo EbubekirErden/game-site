@@ -28,6 +28,10 @@ export function formatErrorReason(reason: string): string {
       return "Only the room creator can start the game.";
     case "players_not_ready":
       return "You need at least 2 players, and everyone in the room must be ready.";
+    case "game_already_started":
+      return "That room already started, so new players cannot join right now.";
+    case "player_not_found":
+      return "Your saved spot in that room could not be restored.";
     case "not_your_turn":
       return "It is not your turn.";
     case "player_not_active":

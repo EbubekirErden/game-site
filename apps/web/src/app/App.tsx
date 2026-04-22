@@ -10,9 +10,18 @@ import { HomePage } from "../pages/HomePage.js";
 import { RoomPage } from "../pages/RoomPage.js";
 import "../styles.css";
 
+const SESSION_STORAGE_KEY = "game-site:session";
+
 type ActionNote =
   | { type: "peek"; playerId: PlayerID; targetPlayerId: PlayerID; seenCard: CardInstance | null }
   | { type: "compare"; playerId: PlayerID; targetPlayerId: PlayerID; playerCard: CardInstance | null; targetCard: CardInstance | null };
+
+type PersistedSession = {
+  playerId: string;
+  playerName: string;
+  selectedGame: string | null;
+  roomId: string | null;
+};
 
 function formatPrivateNote(note: ActionNote): string {
   if (note.type === "peek") {
@@ -39,15 +48,90 @@ const GAMES = [
   },
 ];
 
+function createPlayerId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `player-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function readPersistedSession(): PersistedSession {
+  if (typeof window === "undefined") {
+    return {
+      playerId: createPlayerId(),
+      playerName: "",
+      selectedGame: null,
+      roomId: null,
+    };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) {
+      return {
+        playerId: createPlayerId(),
+        playerName: "",
+        selectedGame: null,
+        roomId: null,
+      };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PersistedSession>;
+    return {
+      playerId: typeof parsed.playerId === "string" && parsed.playerId ? parsed.playerId : createPlayerId(),
+      playerName: typeof parsed.playerName === "string" ? parsed.playerName : "",
+      selectedGame: parsed.selectedGame === "love-letter" ? parsed.selectedGame : null,
+      roomId: typeof parsed.roomId === "string" && parsed.roomId ? parsed.roomId : null,
+    };
+  } catch {
+    return {
+      playerId: createPlayerId(),
+      playerName: "",
+      selectedGame: null,
+      roomId: null,
+    };
+  }
+}
+
+function writePersistedSession(session: PersistedSession): void {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+function getPhaseMessage(phase: PlayerViewState["phase"]): string {
+  if (phase === "lobby") {
+    return "Room ready. Players can toggle ready.";
+  }
+
+  if (phase === "round_over") {
+    return "Round over. Everyone can confirm ready for the next round.";
+  }
+
+  if (phase === "match_over") {
+    return "Match over.";
+  }
+
+  return "Game in progress.";
+}
+
 export function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const roomRouteMatch = matchPath("/games/:gameId/rooms/:roomId", location.pathname);
   const routeGameId = roomRouteMatch?.params.gameId;
   const routeRoomId = roomRouteMatch?.params.roomId;
-  const [selectedGame, setSelectedGame] = React.useState<string | null>(null);
-  const [playerName, setPlayerName] = React.useState("");
-  const [joinCode, setJoinCode] = React.useState("");
+  const initialSessionRef = React.useRef<PersistedSession | null>(null);
+  if (!initialSessionRef.current) {
+    initialSessionRef.current = readPersistedSession();
+  }
+  const initialSession = initialSessionRef.current;
+  const playerIdRef = React.useRef(initialSession.playerId);
+  const [selectedGame, setSelectedGame] = React.useState<string | null>(() => (routeGameId === "love-letter" ? "love-letter" : initialSession.selectedGame));
+  const [playerName, setPlayerName] = React.useState(initialSession.playerName);
+  const [joinCode, setJoinCode] = React.useState(() => routeRoomId ?? initialSession.roomId ?? "");
+  const [savedRoomId, setSavedRoomId] = React.useState<string | null>(initialSession.roomId);
   const [state, setState] = React.useState<PlayerViewState | null>(null);
   const [pendingAction, setPendingAction] = React.useState<"create" | "join" | null>(null);
   const [message, setMessage] = React.useState("Enter your name, then create or join a room.");
@@ -55,19 +139,75 @@ export function App() {
   const [selectedInstanceId, setSelectedInstanceId] = React.useState<string | null>(null);
   const [targetPlayerId, setTargetPlayerId] = React.useState("");
   const [guessedValue, setGuessedValue] = React.useState("2");
+  const reconnectAttemptRef = React.useRef<string | null>(null);
+
+  const attemptReconnect = React.useCallback((roomId: string) => {
+    if (!roomId || !playerName.trim()) return;
+    if (reconnectAttemptRef.current === roomId) return;
+
+    reconnectAttemptRef.current = roomId;
+    setPendingAction("join");
+    setMessage(`Rejoining room ${roomId}...`);
+    socket.emit(
+      "room:reconnect",
+      {
+        roomId,
+        playerId: playerIdRef.current,
+      },
+      (response: { ok: boolean; roomId?: string; reason?: string }) => {
+        setPendingAction(null);
+        if (response.ok) {
+          return;
+        }
+
+        if (roomId === reconnectAttemptRef.current) {
+          reconnectAttemptRef.current = null;
+        }
+        setSavedRoomId(null);
+        setState(null);
+        setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+        if (location.pathname !== "/") {
+          navigate("/", { replace: true });
+        }
+      },
+    );
+  }, [location.pathname, navigate, playerName]);
+
+  React.useEffect(() => {
+    writePersistedSession({
+      playerId: playerIdRef.current,
+      playerName,
+      selectedGame,
+      roomId: savedRoomId,
+    });
+  }, [playerName, savedRoomId, selectedGame]);
+
+  React.useEffect(() => {
+    if (routeRoomId) {
+      setJoinCode(routeRoomId);
+    }
+  }, [routeRoomId]);
 
   React.useEffect(() => {
     const onState = (nextState: PlayerViewState) => {
       setState(nextState);
+      setSelectedGame("love-letter");
       setPendingAction(null);
       setJoinCode(nextState.roomId);
-      setMessage(nextState.phase === "lobby" ? "Room ready. Players can toggle ready." : "Game in progress.");
+      setSavedRoomId(nextState.roomId);
+      reconnectAttemptRef.current = null;
+      setMessage(getPhaseMessage(nextState.phase));
       if (location.pathname !== `/games/love-letter/rooms/${nextState.roomId}`) {
         navigate(`/games/love-letter/rooms/${nextState.roomId}`, { replace: true });
       }
     };
 
     const onConnect = () => {
+      if (savedRoomId && playerName.trim()) {
+        attemptReconnect(savedRoomId);
+        return;
+      }
+
       setMessage((current) => (current.includes("server") ? "Connected. You can create or join a room." : current));
     };
 
@@ -105,7 +245,12 @@ export function App() {
       socket.off("connect_error", onConnectError);
       socket.off("disconnect", onDisconnect);
     };
-  }, [location.pathname, navigate]);
+  }, [attemptReconnect, location.pathname, navigate, playerName, savedRoomId]);
+
+  React.useEffect(() => {
+    if (!socket.connected || !savedRoomId || state?.roomId === savedRoomId) return;
+    attemptReconnect(savedRoomId);
+  }, [attemptReconnect, savedRoomId, state?.roomId]);
 
   React.useEffect(() => {
     if (routeGameId === "love-letter") {
@@ -134,7 +279,7 @@ export function App() {
 
     setPendingAction("create");
     setMessage("Creating room...");
-    socket.emit("room:create", { name: trimmedName }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
+    socket.emit("room:create", { name: trimmedName, playerId: playerIdRef.current }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
       if (!response.ok) {
         setPendingAction(null);
         setMessage(formatErrorReason(response.reason ?? "invalid_action"));
@@ -143,6 +288,7 @@ export function App() {
 
       if (response.roomId) {
         setJoinCode(response.roomId);
+        setSavedRoomId(response.roomId);
         navigate(`/games/${selectedGame}/rooms/${response.roomId}`);
       }
     });
@@ -168,6 +314,7 @@ export function App() {
     socket.emit("room:join", {
       roomId: normalizedCode,
       name: trimmedName,
+      playerId: playerIdRef.current,
     }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
       if (!response.ok) {
         setPendingAction(null);
@@ -177,6 +324,7 @@ export function App() {
 
       if (response.roomId) {
         setJoinCode(response.roomId);
+        setSavedRoomId(response.roomId);
         navigate(`/games/${selectedGame}/rooms/${response.roomId}`);
       }
     });
@@ -240,11 +388,13 @@ export function App() {
     }
 
     setState(null);
+    setSavedRoomId(null);
     setPendingAction(null);
     setLastNote("");
     setSelectedInstanceId(null);
     setTargetPlayerId("");
     setGuessedValue("2");
+    reconnectAttemptRef.current = null;
     setMessage(backToGames ? "Choose a game to create or join a room." : "You left the room.");
 
     if (backToGames) {
@@ -296,6 +446,17 @@ export function App() {
               onLeaveRoom={() => handleLeaveRoom(false)}
               onBackToGames={() => handleLeaveRoom(true)}
             />
+          ) : routeRoomId && savedRoomId === routeRoomId && Boolean(playerName.trim()) ? (
+            <main className="hub-layout">
+              <section className="hub-main">
+                <div className="hub-action-stage">
+                  <header className="stage-header">
+                    <h2>Restoring Room</h2>
+                    <p>{pendingAction === "join" ? message : `Trying to rejoin room ${routeRoomId}...`}</p>
+                  </header>
+                </div>
+              </section>
+            </main>
           ) : (
             <Navigate to="/" replace />
           )

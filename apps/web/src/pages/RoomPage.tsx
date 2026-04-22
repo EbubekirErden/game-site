@@ -1,7 +1,20 @@
 import React from "react";
+import {
+  ArrowLeft,
+  Check,
+  Coins,
+  Copy,
+  Crown,
+  Info,
+  Rocket,
+  Shield,
+  Sparkles,
+  Trophy,
+  X,
+} from "lucide-react";
 
 import { getCardDef } from "@game-site/shared";
-import type { CardInstance, PlayerViewState } from "@game-site/shared";
+import type { PlayerViewState } from "@game-site/shared";
 
 import { ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
@@ -192,9 +205,15 @@ export function RoomPage({
         <div className="topbar-info">
           <h1>{gameTitle}</h1>
           <span className="phase-badge">{showLobby ? "Waiting Room" : state.phase?.replaceAll("_", " ")}</span>
-          <span className="room-code-badge copyable" onClick={handleCopyCode} title="Click to copy">
-            Room: {state.roomId} {copied ? "✅" : "📋"}
-          </span>
+          <button
+            type="button"
+            className="room-code-badge room-code-button copyable"
+            onClick={handleCopyCode}
+            title={copied ? "Room code copied" : "Copy room code"}
+          >
+            <span>Room: {state.roomId}</span>
+            {copied ? <Check size={15} strokeWidth={2.4} aria-hidden="true" /> : <Copy size={15} strokeWidth={2.1} aria-hidden="true" />}
+          </button>
         </div>
         <div className="topbar-actions">
           {state.phase === "in_round" && (
@@ -204,7 +223,7 @@ export function RoomPage({
           )}
           <LoveLetterInfoDrawer
             buttonClassName="info-trigger-button info-trigger-button-room"
-            buttonLabel="ℹ"
+            buttonLabel={<Info size={16} strokeWidth={2.3} aria-hidden="true" />}
             buttonTitle="Open Love Letter rules and card guide"
           />
           <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
@@ -219,9 +238,22 @@ export function RoomPage({
               {state.players?.map((player) => (
                 <div key={player.id} className={`player-row ${player.id === state.selfPlayerId ? "is-self" : ""} ${player.status !== "active" ? "is-eliminated" : ""}`}>
                   <div className="player-row-info">
-                    <strong>{player.name} {player.id === state.creatorId && "👑"}</strong>
+                    <strong className="player-name-row">
+                      <span>{player.name}</span>
+                      {player.id === state.creatorId ? <Crown size={14} strokeWidth={2} aria-hidden="true" /> : null}
+                    </strong>
                     <span className="player-status-text">
-                      {player.status} {player.protectedUntilNextTurn && "🛡️"} • 🪙 {player.tokens || 0}
+                      <span className="status-inline">{player.status}</span>
+                      {player.protectedUntilNextTurn ? (
+                        <span className="status-inline">
+                          <Shield size={12} strokeWidth={2.1} aria-hidden="true" />
+                          Protected
+                        </span>
+                      ) : null}
+                      <span className="status-inline">
+                        <Coins size={12} strokeWidth={2.1} aria-hidden="true" />
+                        {player.tokens || 0}
+                      </span>
                     </span>
                   </div>
                   {showReadyPills && <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} title={player.isReady ? "Ready" : "Not ready"} />}
@@ -243,7 +275,14 @@ export function RoomPage({
               
               {isCreator && (
                 <button type="button" className={`full-width mt-2 ${allReady ? "ready-start-btn" : "secondary-button"}`} onClick={onStartRound} disabled={!allReady}>
-                  {allReady ? "🚀 Start Game" : `Waiting for players... (${readyCount}/${playerCount})`}
+                  {allReady ? (
+                    <span className="button-content">
+                      <Rocket size={16} strokeWidth={2.2} aria-hidden="true" />
+                      Start Game
+                    </span>
+                  ) : (
+                    `Waiting for players... (${readyCount}/${playerCount})`
+                  )}
                 </button>
               )}
             </section>
@@ -253,12 +292,14 @@ export function RoomPage({
             <section className="game-panel alert-panel">
               <div className="alert-header">
                 <h3>Result / Info</h3>
-                <button className="dismiss-btn" onClick={() => setDismissedNote(lastNote)}>✕</button>
+                <button type="button" className="dismiss-btn" onClick={() => setDismissedNote(lastNote)} aria-label="Dismiss note">
+                  <X size={16} strokeWidth={2.3} aria-hidden="true" />
+                </button>
               </div>
               <p>{lastNote}</p>
               {privateNoteCardId && (
                 <div className="private-card-showcase">
-                  <CardView card={{ instanceId: 'temp', cardId: privateNoteCardId as any }} compact />
+                  <CardView card={{ instanceId: "temp", cardId: privateNoteCardId as any }} compact />
                 </div>
               )}
             </section>
@@ -288,16 +329,21 @@ export function RoomPage({
                 <p>Everyone needs to confirm ready before the next round can begin.</p>
 
                 <div className="winners-circle">
-                  🏆 Winner(s): {state.roundWinnerIds?.map((id) => playerNameById(state, id)).join(", ")}
+                  <Trophy size={20} strokeWidth={2.2} aria-hidden="true" />
+                  <span>Winner(s): {state.roundWinnerIds?.map((id) => playerNameById(state, id)).join(", ")}</span>
                 </div>
 
                 <div className="tokens-summary">
                   {state.players?.map((player) => (
                     <div key={player.id} className={`token-row ${player.isReady ? "is-ready-row" : ""}`}>
-                      <span>
-                        {player.name} {state.roundWinnerIds?.includes(player.id) ? "🌟" : ""}
+                      <span className="token-row-name">
+                        <span>{player.name}</span>
+                        {state.roundWinnerIds?.includes(player.id) ? <Sparkles size={14} strokeWidth={2.2} aria-hidden="true" /> : null}
                       </span>
-                      <span style={{ color: "#f1c40f" }}>🪙 {player.tokens}</span>
+                      <span className="token-row-value">
+                        <Coins size={14} strokeWidth={2.1} aria-hidden="true" />
+                        {player.tokens}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -319,7 +365,14 @@ export function RoomPage({
                       disabled={!allReady}
                       style={{ width: "250px" }}
                     >
-                      {allReady ? "🚀 Start Next Round" : `Waiting for everyone... (${readyCount}/${playerCount})`}
+                      {allReady ? (
+                        <span className="button-content">
+                          <Rocket size={16} strokeWidth={2.2} aria-hidden="true" />
+                          Start Next Round
+                        </span>
+                      ) : (
+                        `Waiting for everyone... (${readyCount}/${playerCount})`
+                      )}
                     </button>
                   ) : (
                     <p className="muted-text">{allReady ? "Host can start the next round now." : `Ready players: ${readyCount}/${playerCount}`}</p>
@@ -338,7 +391,10 @@ export function RoomPage({
                     <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
                       <div className="zone-nameplate">
                         {player.name} {player.id === state.selfPlayerId && "(You)"}
-                        <span className="token-count">🪙 {player.tokens || 0}</span>
+                        <span className="token-count">
+                          <Coins size={14} strokeWidth={2.1} aria-hidden="true" />
+                          {player.tokens || 0}
+                        </span>
                       </div>
 
                       {(!player.discardPile || player.discardPile.length === 0) ? (
@@ -363,14 +419,21 @@ export function RoomPage({
               <p>A player reached the token goal for this player count, so the full match is finished.</p>
 
               <div className="winners-circle">
-                🏆 Match Winner(s): {state.matchWinnerIds?.map((id) => playerNameById(state, id)).join(", ")}
+                <Trophy size={20} strokeWidth={2.2} aria-hidden="true" />
+                <span>Match Winner(s): {state.matchWinnerIds?.map((id) => playerNameById(state, id)).join(", ")}</span>
               </div>
 
               <div className="tokens-summary">
                 {state.players?.map((player) => (
                   <div key={player.id} className="token-row">
-                    <span>{player.name} {state.matchWinnerIds?.includes(player.id) ? "🌟" : ""}</span>
-                    <span style={{ color: "#f1c40f" }}>🪙 {player.tokens}</span>
+                    <span className="token-row-name">
+                      <span>{player.name}</span>
+                      {state.matchWinnerIds?.includes(player.id) ? <Sparkles size={14} strokeWidth={2.2} aria-hidden="true" /> : null}
+                    </span>
+                    <span className="token-row-value">
+                      <Coins size={14} strokeWidth={2.1} aria-hidden="true" />
+                      {player.tokens}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -430,7 +493,7 @@ export function RoomPage({
                             spotlight={card.instanceId === selectedInstanceId}
                           />
                           {card.instanceId === selectedInstanceId && isMyTurn && (
-                            <button className="primary-button inline-play-btn" onClick={handleInitiatePlay}>
+                            <button type="button" className="primary-button inline-play-btn" onClick={handleInitiatePlay}>
                               Play Card
                             </button>
                           )}
@@ -441,7 +504,10 @@ export function RoomPage({
                 ) : (
                   <div className="focus-action-area">
                     <div className="step-2-header">
-                      <button className="secondary-button" onClick={() => setPlayStage("select_card")}>← Back to Hand</button>
+                      <button type="button" className="secondary-button button-content" onClick={() => setPlayStage("select_card")}>
+                        <ArrowLeft size={16} strokeWidth={2.2} aria-hidden="true" />
+                        Back to Hand
+                      </button>
                       <h3>You are playing: {selectedCardDef?.name ?? "a card"}</h3>
                     </div>
                     
@@ -484,9 +550,10 @@ export function RoomPage({
                             <label className="dark-label">2. Guess their Card</label>
                             <div className="selection-grid">
                               {[2, 3, 4, 5, 6, 7, 8].map(val => (
-                                <button 
-                                  key={val} 
-                                  className={`grid-btn ${guessedValue === val.toString() ? 'selected' : ''}`}
+                                <button
+                                  key={val}
+                                  type="button"
+                                  className={`grid-btn ${guessedValue === val.toString() ? "selected" : ""}`}
                                   onClick={() => onGuessedValueChange(val.toString())}
                                 >
                                   <span className="guess-val">{val}</span>
@@ -521,7 +588,10 @@ export function RoomPage({
                     <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
                       <div className="zone-nameplate">
                         {player.name} {player.id === state.selfPlayerId && "(You)"}
-                        <span className="token-count">🪙 {player.tokens || 0}</span>
+                        <span className="token-count">
+                          <Coins size={14} strokeWidth={2.1} aria-hidden="true" />
+                          {player.tokens || 0}
+                        </span>
                       </div>
                       
                       {(!player.discardPile || player.discardPile.length === 0) ? (

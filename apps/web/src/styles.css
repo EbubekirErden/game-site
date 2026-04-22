@@ -352,8 +352,11 @@ input::placeholder {
 }
 
 .empty-icon {
-  font-size: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 16px;
+  color: #8db6f5;
 }
 
 /* --- GAME TABLE LAYOUT (ROOM PAGE) --- */
@@ -393,6 +396,15 @@ input::placeholder {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+.room-code-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -418,6 +430,9 @@ input::placeholder {
   padding: 6px 12px;
   min-width: 40px;
   line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .info-trigger-button-home {
@@ -684,7 +699,25 @@ input::placeholder {
 
 .player-row-info { display: flex; flex-direction: column; font-size: 0.95rem; }
 .player-row-info strong { color: #fff; }
-.player-status-text { font-size: 0.8rem; color: #a0aab5; }
+.player-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.player-status-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 0.8rem;
+  color: #a0aab5;
+}
+
+.status-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 
 .mini-ready-pill {
   width: 12px;
@@ -697,6 +730,13 @@ input::placeholder {
 
 .full-width { width: 100%; justify-content: center; text-align: center; }
 .mt-2 { margin-top: 8px; }
+
+.button-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
 
 /* Start Buttons */
 .ready-start-btn {
@@ -766,6 +806,9 @@ input::placeholder {
 }
 
 .token-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(241, 196, 15, 0.15);
   border: 1px solid rgba(241, 196, 15, 0.3);
   padding: 4px 10px;
@@ -1052,6 +1095,11 @@ input::placeholder {
 .round-over-panel h2 { border: none; font-size: 2.5rem; margin-bottom: 0; }
 
 .winners-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
   font-size: 1.5rem;
   font-weight: bold;
   color: #f1c40f;
@@ -1074,12 +1122,24 @@ input::placeholder {
 .token-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   background: rgba(0, 0, 0, 0.4);
   padding: 16px 24px;
   border-radius: 12px;
   font-weight: bold;
   font-size: 1.1rem;
   border: 1px solid #2a3543;
+}
+
+.token-row-name,
+.token-row-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.token-row-value {
+  color: #f1c40f;
 }
 
 .is-ready-row {
@@ -1110,7 +1170,9 @@ input::placeholder {
   background: transparent;
   border: none;
   color: #e74c3c;
-  font-size: 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   padding: 4px;
   transition: opacity 0.2s;

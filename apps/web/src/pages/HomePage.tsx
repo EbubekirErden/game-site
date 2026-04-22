@@ -1,4 +1,4 @@
-import React from "react";
+import { Dice3 } from "lucide-react";
 
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
 
@@ -120,7 +120,9 @@ export function HomePage({
           </div>
         ) : (
           <div className="hub-empty-state">
-            <div className="empty-icon">🎲</div>
+            <div className="empty-icon" aria-hidden="true">
+              <Dice3 size={42} strokeWidth={1.9} />
+            </div>
             <h2>Select a game</h2>
             <p>Choose a game from the sidebar to start playing.</p>
           </div>

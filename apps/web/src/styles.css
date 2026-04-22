@@ -97,6 +97,9 @@ button {
 }
 
 .action-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
   padding: 18px;
   border: 1px solid #e1e8ef;
   border-radius: 16px;
@@ -109,8 +112,17 @@ button {
 }
 
 .action-card p {
-  margin: 8px 0 16px;
+  margin: 0;
   color: #647180;
+}
+
+.action-card label {
+  margin: 0;
+}
+
+.action-button {
+  justify-self: start;
+  margin-top: 2px;
 }
 
 .room-shell {

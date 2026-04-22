@@ -42,23 +42,43 @@ export function App() {
       setMessage(nextState.phase === "lobby" ? "Room ready. Players can toggle ready." : "Game in progress.");
     };
 
+    const onConnect = () => {
+      setMessage((current) => (current.includes("server") ? "Connected. You can create or join a room." : current));
+    };
+
     const onError = (payload: { reason?: string }) => {
       setPendingAction(null);
       setMessage(formatErrorReason(payload.reason ?? "invalid_action"));
+    };
+
+    const onConnectError = () => {
+      setPendingAction(null);
+      setMessage("Cannot reach the game server. Make sure the dev server is running.");
+    };
+
+    const onDisconnect = () => {
+      setPendingAction(null);
+      setMessage("Connection lost. Trying to reconnect...");
     };
 
     const onNote = (note: ActionNote) => {
       setLastNote(formatPrivateNote(note));
     };
 
+    socket.on("connect", onConnect);
     socket.on("state", onState);
     socket.on("action:error", onError);
     socket.on("action:note", onNote);
+    socket.on("connect_error", onConnectError);
+    socket.on("disconnect", onDisconnect);
 
     return () => {
+      socket.off("connect", onConnect);
       socket.off("state", onState);
       socket.off("action:error", onError);
       socket.off("action:note", onNote);
+      socket.off("connect_error", onConnectError);
+      socket.off("disconnect", onDisconnect);
     };
   }, []);
 
@@ -78,7 +98,17 @@ export function App() {
 
     setPendingAction("create");
     setMessage("Creating room...");
-    socket.emit("room:create", { name: trimmedName });
+    socket.emit("room:create", { name: trimmedName }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
+      if (!response.ok) {
+        setPendingAction(null);
+        setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+        return;
+      }
+
+      if (response.roomId) {
+        setJoinCode(response.roomId);
+      }
+    });
   }
 
   function handleJoinRoom() {
@@ -96,6 +126,16 @@ export function App() {
     socket.emit("room:join", {
       roomId: normalizedCode,
       name: trimmedName,
+    }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
+      if (!response.ok) {
+        setPendingAction(null);
+        setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+        return;
+      }
+
+      if (response.roomId) {
+        setJoinCode(response.roomId);
+      }
     });
   }
 

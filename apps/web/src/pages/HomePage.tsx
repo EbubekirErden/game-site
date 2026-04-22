@@ -48,7 +48,7 @@ export function HomePage({
               Room code
               <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="AB12CD" />
             </label>
-            <button type="button" className="secondary-button" onClick={onJoinRoom} disabled={pendingAction !== null}>
+            <button type="button" className="secondary-button action-button" onClick={onJoinRoom} disabled={pendingAction !== null}>
               {pendingAction === "join" ? "Joining..." : "Join room"}
             </button>
           </section>

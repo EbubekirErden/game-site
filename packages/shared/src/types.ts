@@ -94,6 +94,7 @@ export interface GameState {
 
 export type GameEvent =
   | { type: "player_joined"; playerId: PlayerID; name: string }
+  | { type: "player_left"; playerId: PlayerID; name: string }
   | { type: "player_ready_changed"; playerId: PlayerID; isReady: boolean }
   | { type: "round_started" }
   | { type: "card_drawn"; playerId: PlayerID }

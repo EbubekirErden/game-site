@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { Server } from "socket.io";
 
-import { addPlayer, canStartLobbyRound, createGame, playCardAction, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
+import { addPlayer, canStartLobbyRound, createGame, playCardAction, removePlayer, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -11,6 +11,7 @@ const io = new Server(httpServer, {
 });
 
 const rooms = new Map<string, ReturnType<typeof createGame>>();
+const roomBySocketId = new Map<string, string>();
 
 function generateRoomCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -36,26 +37,31 @@ function emitRoomState(roomId: string): void {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:create", ({ name }) => {
+  socket.on("room:create", ({ name }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const roomId = generateRoomCode();
     const game = createGame(roomId, socket.id);
     const next = addPlayer(game, socket.id, name);
     rooms.set(roomId, next);
+    roomBySocketId.set(socket.id, roomId);
     socket.join(roomId);
     emitRoomState(roomId);
+    respond?.({ ok: true, roomId });
   });
 
-  socket.on("room:join", ({ roomId, name }) => {
+  socket.on("room:join", ({ roomId, name }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     const game = rooms.get(normalizedRoomId);
     if (!game) {
       socket.emit("action:error", { reason: "room_not_found" });
+      respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
     const next = addPlayer(game, socket.id, name);
     rooms.set(normalizedRoomId, next);
+    roomBySocketId.set(socket.id, normalizedRoomId);
     socket.join(normalizedRoomId);
     emitRoomState(normalizedRoomId);
+    respond?.({ ok: true, roomId: normalizedRoomId });
   });
 
   socket.on("room:set-ready", ({ roomId, isReady }) => {
@@ -112,6 +118,24 @@ io.on("connection", (socket) => {
     for (const note of result.privateNotes ?? []) {
       io.to(note.playerId).emit("action:note", note);
     }
+  });
+
+  socket.on("disconnect", () => {
+    const roomId = roomBySocketId.get(socket.id);
+    roomBySocketId.delete(socket.id);
+    if (!roomId) return;
+
+    const game = rooms.get(roomId);
+    if (!game) return;
+
+    const next = removePlayer(game, socket.id);
+    if (next.players.length === 0) {
+      rooms.delete(roomId);
+      return;
+    }
+
+    rooms.set(roomId, next);
+    emitRoomState(roomId);
   });
 });
 

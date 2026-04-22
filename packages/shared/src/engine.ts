@@ -51,6 +51,10 @@ function getWinningTokenCount(playerCount: number): number {
   return 4;
 }
 
+function getFirstActivePlayerId(players: PlayerState[]): PlayerID | null {
+  return players.find((player) => player.status === "active")?.id ?? null;
+}
+
 export function canStartLobbyRound(state: GameState): boolean {
   return state.phase === "lobby" && state.players.length >= 2 && state.players.every((player) => player.isReady);
 }
@@ -213,6 +217,32 @@ export function setPlayerReady(state: GameState, playerId: PlayerID, isReady: bo
         : candidate,
     ),
     log: [...state.log, { type: "player_ready_changed", playerId, isReady }],
+  };
+}
+
+export function removePlayer(state: GameState, playerId: PlayerID): GameState {
+  const leavingPlayer = state.players.find((player) => player.id === playerId);
+  if (!leavingPlayer) return state;
+
+  const players = state.players.filter((player) => player.id !== playerId);
+  const nextCreatorId = state.creatorId === playerId ? players[0]?.id ?? state.creatorId : state.creatorId;
+  const round =
+    state.round === null
+      ? null
+      : {
+          ...state.round,
+          currentPlayerId:
+            state.round.currentPlayerId === playerId ? getFirstActivePlayerId(players) : state.round.currentPlayerId,
+        };
+
+  return {
+    ...state,
+    creatorId: nextCreatorId,
+    players,
+    round,
+    roundWinnerIds: state.roundWinnerIds.filter((winnerId) => winnerId !== playerId),
+    matchWinnerIds: state.matchWinnerIds.filter((winnerId) => winnerId !== playerId),
+    log: [...state.log, { type: "player_left", playerId: leavingPlayer.id, name: leavingPlayer.name }],
   };
 }
 

@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 
 import { BASE_CARDS } from "./cards.js";
 import { resolvePlayAction } from "./rules.js";
-import type { CardID, CardInstance, GameState, PlayerID, PlayerState, PublicGameState, RoomID } from "./types.js";
+import type { ActionResult } from "./rules.js";
+import type { CardID, CardInstance, GameState, PlayerID, PlayerState, PlayerViewState, PublicGameState, RoomID } from "./types.js";
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
@@ -248,6 +249,16 @@ export function playCard(
   instanceId: string,
   options: { targetPlayerId?: PlayerID; guessedValue?: number } = {},
 ): GameState {
+  const result = playCardAction(state, playerId, instanceId, options);
+  return result.state ?? state;
+}
+
+export function playCardAction(
+  state: GameState,
+  playerId: PlayerID,
+  instanceId: string,
+  options: { targetPlayerId?: PlayerID; guessedValue?: number } = {},
+): ActionResult {
   const result = resolvePlayAction(state, {
     type: "play_card",
     playerId,
@@ -257,7 +268,7 @@ export function playCard(
   });
 
   if (!result.ok || !result.state || !result.state.round) {
-    return state;
+    return result;
   }
 
   const resolvedState = result.state;
@@ -265,16 +276,25 @@ export function playCard(
   const activePlayers = getActivePlayers(resolvedState.players);
 
   if (activePlayers.length <= 1) {
-    return finishRound(resolvedState, activePlayers.map((player) => player.id));
+    return {
+      ...result,
+      state: finishRound(resolvedState, activePlayers.map((player) => player.id)),
+    };
   }
 
   if (resolvedRound.deck.length === 0) {
-    return finishRound(resolvedState, getRoundWinners(resolvedState.players));
+    return {
+      ...result,
+      state: finishRound(resolvedState, getRoundWinners(resolvedState.players)),
+    };
   }
 
   const nextPlayerId = getNextActivePlayerId(resolvedState.players, playerId);
   if (!nextPlayerId) {
-    return finishRound(resolvedState, getRoundWinners(resolvedState.players));
+    return {
+      ...result,
+      state: finishRound(resolvedState, getRoundWinners(resolvedState.players)),
+    };
   }
 
   const advancedState: GameState = {
@@ -286,7 +306,10 @@ export function playCard(
     },
   };
 
-  return drawToActivePlayer(advancedState, nextPlayerId);
+  return {
+    ...result,
+    state: drawToActivePlayer(advancedState, nextPlayerId),
+  };
 }
 
 export function toPublicGameState(state: GameState): PublicGameState {
@@ -315,5 +338,22 @@ export function toPublicGameState(state: GameState): PublicGameState {
     roundWinnerIds: [...state.roundWinnerIds],
     matchWinnerIds: [...state.matchWinnerIds],
     log: [...state.log],
+  };
+}
+
+export function toPlayerViewState(state: GameState, selfPlayerId: PlayerID): PlayerViewState {
+  return {
+    ...toPublicGameState(state),
+    selfPlayerId,
+    players: state.players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      handCount: player.hand.length,
+      hand: player.id === selfPlayerId ? [...player.hand] : [],
+      discardPile: [...player.discardPile],
+      status: player.status,
+      protectedUntilNextTurn: player.protectedUntilNextTurn,
+      tokens: player.tokens,
+    })),
   };
 }

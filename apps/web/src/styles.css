@@ -314,6 +314,58 @@ select:focus {
   color: #2f7b4f;
 }
 
+.ready-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  width: fit-content;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid #d9e4ef;
+  border-radius: 999px;
+  background: #eef3f7;
+  color: #526171;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.ready-toggle.is-ready {
+  background: #e8f7ee;
+  border-color: #bfe5cb;
+  color: #2f7b4f;
+}
+
+.ready-toggle-track {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #c5d0dc;
+  transition: background 140ms ease;
+}
+
+.ready-toggle.is-ready .ready-toggle-track {
+  background: #78c08f;
+}
+
+.ready-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(24, 33, 43, 0.18);
+  transition: transform 140ms ease;
+}
+
+.ready-toggle.is-ready .ready-toggle-thumb {
+  transform: translateX(18px);
+}
+
+.ready-toggle-label {
+  font-weight: 600;
+}
+
 .token-badge {
   background: #fff2f2;
   color: #a03b43;

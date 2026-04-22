@@ -98,14 +98,21 @@ export function RoomPage({
 
           <section className="sidebar-section">
             <h3>Your status</h3>
-            <div className="status-row">
+            {showLobby ? (
+              <button
+                type="button"
+                className={`ready-toggle${self?.isReady ? " is-ready" : ""}`}
+                aria-pressed={self?.isReady ?? false}
+                onClick={() => onToggleReady(!self?.isReady)}
+              >
+                <span className="ready-toggle-track">
+                  <span className="ready-toggle-thumb" />
+                </span>
+                <span className="ready-toggle-label">{self?.isReady ? "Ready" : "Not ready"}</span>
+              </button>
+            ) : (
               <span className={`ready-pill${self?.isReady ? " is-ready" : ""}`}>{self?.isReady ? "Ready" : "Not ready"}</span>
-              {showLobby ? (
-                <button type="button" className="secondary-button" onClick={() => onToggleReady(!self?.isReady)}>
-                  {self?.isReady ? "Set not ready" : "Set ready"}
-                </button>
-              ) : null}
-            </div>
+            )}
           </section>
 
           <section className="sidebar-section">

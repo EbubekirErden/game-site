@@ -239,7 +239,7 @@ export function removePlayer(state: GameState, playerId: PlayerID): GameState {
             state.round.currentPlayerId === playerId ? getFirstActivePlayerId(players) : state.round.currentPlayerId,
         };
 
-  return {
+  const nextState: GameState = {
     ...state,
     creatorId: nextCreatorId,
     players,
@@ -248,6 +248,52 @@ export function removePlayer(state: GameState, playerId: PlayerID): GameState {
     matchWinnerIds: state.matchWinnerIds.filter((winnerId) => winnerId !== playerId),
     log: [...state.log, { type: "player_left", playerId: leavingPlayer.id, name: leavingPlayer.name }],
   };
+
+  if (players.length === 0) {
+    return nextState;
+  }
+
+  if (state.phase === "in_round") {
+    const activePlayers = getActivePlayers(players);
+    if (activePlayers.length <= 1) {
+      const finished = finishRound(nextState, activePlayers.map((player) => player.id));
+      if (finished.phase !== "match_over" && finished.players.length < 2) {
+        return {
+          ...finished,
+          phase: "lobby",
+          round: null,
+          players: finished.players.map((player) => ({
+            ...player,
+            hand: [],
+            discardPile: [],
+            status: "active",
+            protectedUntilNextTurn: false,
+            isReady: false,
+          })),
+        };
+      }
+
+      return finished;
+    }
+  }
+
+  if ((state.phase === "lobby" || state.phase === "round_over") && players.length < 2) {
+    return {
+      ...nextState,
+      phase: "lobby",
+      round: null,
+      players: nextState.players.map((player) => ({
+        ...player,
+        hand: [],
+        discardPile: [],
+        status: "active",
+        protectedUntilNextTurn: false,
+        isReady: false,
+      })),
+    };
+  }
+
+  return nextState;
 }
 
 export function startRound(state: GameState): GameState {

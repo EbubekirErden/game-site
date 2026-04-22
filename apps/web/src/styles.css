@@ -82,6 +82,21 @@ input::placeholder {
   border: 1px solid #3d4c5f;
 }
 
+.danger-button {
+  border: 1px solid rgba(231, 76, 60, 0.35);
+  border-radius: 8px;
+  background: rgba(231, 76, 60, 0.16);
+  color: #ffd1cc;
+  font-weight: 700;
+  transition: transform 140ms ease, opacity 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.danger-button:hover {
+  background: rgba(231, 76, 60, 0.28);
+  border-color: rgba(231, 76, 60, 0.55);
+  color: #fff1ef;
+}
+
 .secondary-button:hover {
   background: #3d4c5f;
   color: #ffffff;
@@ -114,11 +129,11 @@ input::placeholder {
 
 /* --- AUTHENTIC CARD STYLING --- */
 .card-view {
-  width: 140px;
-  height: 196px; 
+  width: 156px;
+  height: 220px; 
   border: 2px solid #d6dee6;
-  border-radius: 12px;
-  padding: 10px;
+  border-radius: 14px;
+  padding: 12px;
   background: #fff;
   color: #18212b;
   display: flex;
@@ -198,8 +213,8 @@ input::placeholder {
 }
 
 .card-view-compact {
-  width: 80px;
-  height: 112px;
+  width: 88px;
+  height: 124px;
   padding: 6px;
 }
 .card-view-compact .card-view-rank { font-size: 1.2rem; }
@@ -383,6 +398,12 @@ input::placeholder {
   font-weight: bold;
   background: rgba(255, 255, 255, 0.1);
   color: #a0aab5;
+}
+
+.topbar-leave-button {
+  padding: 6px 12px;
+  min-height: 0;
+  line-height: 1.2;
 }
 
 .turn-indicator.is-my-turn {
@@ -635,8 +656,9 @@ input::placeholder {
 .hand-cards-large {
   display: flex;
   justify-content: center;
-  gap: 48px; /* Wide gap to fit buttons easily */
+  gap: 32px;
   margin-top: 32px;
+  flex-wrap: wrap;
 }
 
 .hand-card-wrapper {
@@ -671,13 +693,13 @@ input::placeholder {
 
 .play-stage-horizontal {
   display: flex;
-  gap: 32px;
+  gap: 40px;
   align-items: stretch;
 }
 
 .stage-card-slot {
-  width: 140px;
-  min-height: 196px;
+  width: 156px;
+  min-height: 220px;
   border-radius: 12px;
   display: grid;
   place-items: center;
@@ -685,6 +707,13 @@ input::placeholder {
 .stage-card-slot.is-empty {
   border: 2px dashed #4a5c70;
   background: rgba(0,0,0,0.2);
+}
+
+.empty-slot {
+  color: #8b97a5;
+  text-align: center;
+  padding: 12px;
+  font-size: 0.95rem;
 }
 
 .stage-actions {
@@ -773,6 +802,10 @@ input::placeholder {
   font-size: 1.1rem;
   font-weight: bold;
   margin-top: 8px;
+}
+
+.deck-status-panel .board-header {
+  margin-bottom: 0;
 }
 
 /* --- ROUND OVER SCOREBOARD --- */
@@ -872,10 +905,37 @@ input::placeholder {
   flex: 1; 
 }
 .log-item { 
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 12px; 
   border-radius: 8px; 
   background: rgba(15, 20, 26, 0.5); 
   color: #c9d1d9; font-size: 0.9rem; 
   border-left: 3px solid #3d4c5f; 
   height: fit-content;
+}
+
+.log-item.is-danger {
+  border-left-color: #e74c3c;
+  background: rgba(96, 24, 24, 0.28);
+}
+
+.log-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.log-badge.is-danger {
+  background: rgba(231, 76, 60, 0.18);
+  color: #ff9f96;
+  border: 1px solid rgba(231, 76, 60, 0.35);
 }

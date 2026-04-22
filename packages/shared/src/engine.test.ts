@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addPlayer, createGame, playCardAction, setPlayerReady, startRound } from "./engine.js";
+import { addPlayer, createGame, playCardAction, removePlayer, setPlayerReady, startRound } from "./engine.js";
 import type { CardInstance, GameState, PlayerID } from "./types.js";
 
 function makeCard(cardId: CardInstance["cardId"], instanceId: string): CardInstance {
@@ -183,4 +183,16 @@ test("next round waits for everyone to confirm ready again", () => {
   assert.equal(restarted.phase, "in_round");
   assert.ok(restarted.round);
   assert.equal(restarted.players.every((player) => player.isReady === false), true);
+});
+
+test("disconnecting the last opponent awards the round and returns the room to lobby", () => {
+  let state = setupStartedGame(["Ava", "Ben"]);
+
+  state = removePlayer(state, "p2");
+
+  assert.equal(state.phase, "lobby");
+  assert.equal(state.players.length, 1);
+  assert.equal(state.players[0]?.id, "p1");
+  assert.equal(state.players[0]?.tokens, 1);
+  assert.equal(state.round, null);
 });

@@ -2,7 +2,16 @@ import { getCardDef } from "@game-site/shared";
 import type { CardID, GameEvent, PlayerID, PlayerViewState } from "@game-site/shared";
 
 export function playerNameById(state: PlayerViewState, playerId: PlayerID): string {
-  return state.players.find((player) => player.id === playerId)?.name ?? "Unknown player";
+  const activeName = state.players.find((player) => player.id === playerId)?.name;
+  if (activeName) return activeName;
+
+  const historicalName = [...state.log].reverse().find((event) =>
+    ("playerId" in event) &&
+    event.playerId === playerId &&
+    ("name" in event),
+  );
+
+  return historicalName && "name" in historicalName ? historicalName.name : "Unknown player";
 }
 
 export function cardIdByValue(value: number): CardID {
@@ -52,7 +61,9 @@ export function formatErrorReason(reason: string): string {
 export function formatEvent(event: GameEvent, state: PlayerViewState): string {
   switch (event.type) {
     case "player_joined":
-      return `${playerNameById(state, event.playerId)} joined the room.`;
+      return `${event.name} joined the room.`;
+    case "player_left":
+      return `${event.name} left the room.`;
     case "player_ready_changed":
       return `${playerNameById(state, event.playerId)} is now ${event.isReady ? "ready" : "not ready"}.`;
     case "round_started":
@@ -70,7 +81,7 @@ export function formatEvent(event: GameEvent, state: PlayerViewState): string {
     case "player_protected":
       return `${playerNameById(state, event.playerId)} is protected until their next turn.`;
     case "player_eliminated":
-      return `${playerNameById(state, event.playerId)} is out of the round.`;
+      return `${playerNameById(state, event.playerId)} is out of the round${event.reason ? `: ${event.reason}` : "."}`;
     case "round_ended":
       return `Round ended. Winner: ${event.winnerIds.map((playerId) => playerNameById(state, playerId)).join(", ")}.`;
     case "token_awarded":

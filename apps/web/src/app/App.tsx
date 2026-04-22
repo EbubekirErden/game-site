@@ -378,6 +378,7 @@ export function App() {
             return;
           }
 
+          setLastNote("");
           setMessage(`Played ${selectedCardDef.name}.`);
           setSelectedInstanceId(null);
           setTargetPlayerId("");

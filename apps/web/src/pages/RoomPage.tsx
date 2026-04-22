@@ -50,14 +50,16 @@ export function RoomPage({
   const isCreator = state.creatorId === state.selfPlayerId;
   const selectedCard = self?.hand?.find((card) => card.instanceId === selectedInstanceId) ?? null;
   const selectedCardDef = selectedCard ? getCardDef(selectedCard.cardId) : null;
+  const selfHandDefs = self?.hand?.map((card) => getCardDef(card.cardId)) ?? [];
   const isMyTurn = Boolean(self && state.round?.currentPlayerId === self.id && state.phase === "in_round");
+  const currentTurnName = state.round?.currentPlayerId ? playerNameById(state, state.round.currentPlayerId) : null;
   const playerCount = state.players?.length || 0;
   const readyCount = state.players?.filter((player) => player.isReady).length || 0;
   const allReady = playerCount >= 2 && state.players?.every((player) => player.isReady);
   const showLobby = state.phase === "lobby";
   const showBetweenRounds = state.phase === "round_over";
   const showMatchOver = state.phase === "match_over";
-  const showReadyFlow = showLobby || showBetweenRounds;
+  const showReadyPills = showLobby || showBetweenRounds;
   
   const guessNeeded = selectedCardDef?.id === "guard";
   const targetNeeded =
@@ -69,8 +71,11 @@ export function RoomPage({
 
   React.useEffect(() => {
     if (!isMyTurn) setPlayStage("select_card");
-    setDismissedNote(null);
   }, [isMyTurn, state.round?.turnNumber, state.phase]);
+
+  React.useEffect(() => {
+    setDismissedNote(null);
+  }, [lastNote]);
 
   const handleInitiatePlay = async () => {
     if (targetNeeded || guessNeeded) {
@@ -140,12 +145,25 @@ export function RoomPage({
   }, [selectedCardDef, self, state.players]);
 
   const hasSelectableTarget = targetOptions.some((option) => option.selectable);
+  const activeOpponentsCount = state.players?.filter((player) => player.id !== self?.id && player.status === "active").length ?? 0;
   const canPlayWithoutTarget = Boolean(
     selectedCardDef &&
     targetNeeded &&
     selectedCardDef.id !== "prince" &&
     !hasSelectableTarget,
   );
+  const mustPlayCountess = Boolean(
+    selectedCardDef &&
+    selectedCardDef.id !== "countess" &&
+    selfHandDefs.some((card) => card.id === "countess") &&
+    selfHandDefs.some((card) => card.id === "prince" || card.id === "king"),
+  );
+  const targetHintText =
+    targetNeeded && !hasSelectableTarget
+      ? activeOpponentsCount === 0
+        ? "No opponent is left in the round, so this card will be played without effect."
+        : "All available opponents are protected by Handmaid, so this card will be played without effect."
+      : null;
 
   React.useEffect(() => {
     if (!targetPlayerId) return;
@@ -169,10 +187,10 @@ export function RoomPage({
         <div className="topbar-actions">
           {state.phase === "in_round" && (
             <span className={`turn-indicator ${isMyTurn ? "is-my-turn" : ""}`}>
-              {isMyTurn ? "Your Turn" : "Waiting for others..."}
+              {isMyTurn ? "Your Turn" : currentTurnName ? `${currentTurnName}'s Turn` : "Turn in progress"}
             </span>
           )}
-          <button type="button" className="secondary-button" onClick={onLeaveRoom}>Leave</button>
+          <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
         </div>
       </header>
 
@@ -189,26 +207,26 @@ export function RoomPage({
                       {player.status} {player.protectedUntilNextTurn && "🛡️"} • 🪙 {player.tokens || 0}
                     </span>
                   </div>
-                  {showReadyFlow && <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} title={player.isReady ? "Ready" : "Not ready"} />}
+                  {showReadyPills && <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} title={player.isReady ? "Ready" : "Not ready"} />}
                 </div>
               ))}
             </div>
           </section>
 
-          {showReadyFlow && (
+          {showLobby && (
             <section className="game-panel slim-panel">
-              <h3>{showLobby ? "Your Status" : "Next Round"}</h3>
+              <h3>Your Status</h3>
               <button
                 type="button"
                 className={`primary-button full-width ${self?.isReady ? "is-ready-btn" : ""}`}
                 onClick={() => onToggleReady(!self?.isReady)}
               >
-                {self?.isReady ? (showLobby ? "Ready to Start!" : "Ready Confirmed") : (showLobby ? "Click when Ready" : "Confirm Ready")}
+                {self?.isReady ? "Ready to Start!" : "Click when Ready"}
               </button>
               
               {isCreator && (
                 <button type="button" className={`full-width mt-2 ${allReady ? "ready-start-btn" : "secondary-button"}`} onClick={onStartRound} disabled={!allReady}>
-                  {allReady ? (showLobby ? "🚀 Start Game" : "🚀 Start Next Round") : `Waiting for players... (${readyCount}/${playerCount})`}
+                  {allReady ? "🚀 Start Game" : `Waiting for players... (${readyCount}/${playerCount})`}
                 </button>
               )}
             </section>
@@ -341,33 +359,10 @@ export function RoomPage({
             </div>
           ) : (
             <>
-              <div className="game-panel board-area">
+              <div className="game-panel deck-status-panel">
                 <div className="board-header">
-                  <h3>Table</h3>
+                  <h3>Deck</h3>
                   <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
-                </div>
-                
-                <div className="table-grid">
-                  {state.players?.map((player) => (
-                    <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
-                      <div className="zone-nameplate">
-                        {player.name} {player.id === state.selfPlayerId && "(You)"}
-                        <span className="token-count">🪙 {player.tokens || 0}</span>
-                      </div>
-                      
-                      {(!player.discardPile || player.discardPile.length === 0) ? (
-                         <span className="muted-text" style={{fontSize: '0.85rem'}}>No discards</span>
-                      ) : (
-                        <div className="discard-fan">
-                          {player.discardPile?.map((card, index) => (
-                            <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
-                              <CardView card={card} compact />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
                 </div>
 
                 {(state.round?.visibleRemovedCards?.length ?? 0) > 0 && (
@@ -411,23 +406,25 @@ export function RoomPage({
                   <div className="focus-action-area">
                     <div className="step-2-header">
                       <button className="secondary-button" onClick={() => setPlayStage("select_card")}>← Back to Hand</button>
-                      <h3>You are playing: {selectedCardDef?.name}</h3>
+                      <h3>You are playing: {selectedCardDef?.name ?? "a card"}</h3>
                     </div>
                     
                     <div className="play-stage-horizontal">
-                      <div className="stage-card-slot">
-                        <CardView card={selectedCard!} spotlight />
+                      <div className={`stage-card-slot ${!selectedCard ? "is-empty" : ""}`}>
+                        {selectedCard ? <CardView card={selectedCard} spotlight /> : <div className="empty-slot">Waiting for table update...</div>}
                       </div>
 
                       <div className="stage-actions">
+                        {mustPlayCountess && (
+                          <p className="error-text">
+                            You are holding Countess, so the rules force you to play Countess instead of Prince or King.
+                          </p>
+                        )}
+
                         {targetNeeded && (
                           <div className="selection-group">
                             <label className="dark-label">1. Choose a Target</label>
-                            {!hasSelectableTarget && (
-                              <p className="muted-text">
-                                All available opponents are protected by Handmaid, so this card will be played without effect.
-                              </p>
-                            )}
+                            {targetHintText && <p className="muted-text">{targetHintText}</p>}
                             <div className="selection-grid">
                               {targetOptions.map(({ player, selectable, protectedByHandmaid }) => (
                                 <button 
@@ -467,7 +464,7 @@ export function RoomPage({
                         <button
                           type="button"
                           className="primary-button play-btn"
-                          disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId && !canPlayWithoutTarget) || (guessNeeded && hasSelectableTarget && !guessedValue)}
+                          disabled={!isMyTurn || !selectedCard || mustPlayCountess || (targetNeeded && !targetPlayerId && !canPlayWithoutTarget) || (guessNeeded && hasSelectableTarget && !guessedValue)}
                           onClick={handleConfirmPlay}
                         >
                           Confirm & Play
@@ -476,6 +473,35 @@ export function RoomPage({
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="game-panel board-area">
+                <div className="board-header">
+                  <h3>Discard Piles</h3>
+                </div>
+                
+                <div className="table-grid">
+                  {state.players?.map((player) => (
+                    <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
+                      <div className="zone-nameplate">
+                        {player.name} {player.id === state.selfPlayerId && "(You)"}
+                        <span className="token-count">🪙 {player.tokens || 0}</span>
+                      </div>
+                      
+                      {(!player.discardPile || player.discardPile.length === 0) ? (
+                         <span className="muted-text" style={{fontSize: '0.85rem'}}>No discards</span>
+                      ) : (
+                        <div className="discard-fan">
+                          {player.discardPile?.map((card, index) => (
+                            <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
+                              <CardView card={card} compact />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}

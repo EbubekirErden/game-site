@@ -104,7 +104,7 @@ export type GameEvent =
   | { type: "card_swapped"; playerId: PlayerID; targetPlayerId: PlayerID }
   | { type: "card_seen"; playerId: PlayerID; targetPlayerId: PlayerID; seenCardId: CardID }
   | { type: "player_protected"; playerId: PlayerID }
-  | { type: "player_eliminated"; playerId: PlayerID }
+  | { type: "player_eliminated"; playerId: PlayerID; reason?: string; sourceCardId?: CardID }
   | { type: "round_ended"; winnerIds: PlayerID[] }
   | { type: "token_awarded"; playerId: PlayerID; tokens: number }
   | { type: "match_ended"; winnerIds: PlayerID[] };

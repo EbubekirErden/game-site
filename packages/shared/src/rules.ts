@@ -41,11 +41,15 @@ function activeOtherPlayers(players: PlayerState[], playerId: PlayerID): PlayerS
   return players.filter((player) => player.id !== playerId && player.status === "active");
 }
 
-function eliminatePlayer(player: PlayerState, log: GameEvent[]): void {
+function eliminatePlayer(
+  player: PlayerState,
+  log: GameEvent[],
+  details?: { reason?: string; sourceCardId?: CardID },
+): void {
   if (player.status === "eliminated") return;
   player.status = "eliminated";
   player.protectedUntilNextTurn = false;
-  log.push({ type: "player_eliminated", playerId: player.id });
+  log.push({ type: "player_eliminated", playerId: player.id, reason: details?.reason, sourceCardId: details?.sourceCardId });
 }
 
 function discardHandCard(player: PlayerState): CardInstance | null {
@@ -152,14 +156,14 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
     target.hand = [nextCard];
   };
 
-  const resolveKnockout = (target: PlayerState): void => {
+  const resolveKnockout = (target: PlayerState, details?: { reason?: string; sourceCardId?: CardID }): void => {
     if (target.status === "eliminated") return;
     const discarded = discardHandCard(target);
     if (discarded && getCardDef(discarded.cardId).id === "princess") {
-      eliminatePlayer(target, log);
+      eliminatePlayer(target, log, details);
       return;
     }
-    eliminatePlayer(target, log);
+    eliminatePlayer(target, log, details);
   };
 
   switch (playedCardDef.id) {
@@ -174,7 +178,10 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
         });
         const targetCard = target.hand[0];
         if (targetCard && getCardDef(targetCard.cardId).value === action.guessedValue) {
-          resolveKnockout(target);
+          resolveKnockout(target, {
+            sourceCardId: "guard",
+            reason: `was correctly guessed by ${player.name}'s Guard`,
+          });
         }
       }
       break;
@@ -208,9 +215,15 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
           const playerValue = getCardDef(playerCard.cardId).value;
           const targetValue = getCardDef(targetCard.cardId).value;
           if (playerValue < targetValue) {
-            resolveKnockout(player);
+            resolveKnockout(player, {
+              sourceCardId: "baron",
+              reason: `lost a Baron comparison against ${target.name}`,
+            });
           } else if (targetValue < playerValue) {
-            resolveKnockout(target);
+            resolveKnockout(target, {
+              sourceCardId: "baron",
+              reason: `lost a Baron comparison against ${player.name}`,
+            });
           }
         }
       }
@@ -228,7 +241,10 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       if (target && isTargetable(player.id, target)) {
         const discarded = discardHandCard(target);
         if (discarded && getCardDef(discarded.cardId).id === "princess") {
-          eliminatePlayer(target, log);
+          eliminatePlayer(target, log, {
+            sourceCardId: "prince",
+            reason: `discarded the Princess after ${player.name} played Prince`,
+          });
           break;
         }
         resolvePrinceDraw(target);
@@ -249,7 +265,10 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       break;
     }
     case "princess": {
-      eliminatePlayer(player, log);
+      eliminatePlayer(player, log, {
+        sourceCardId: "princess",
+        reason: "played the Princess",
+      });
       break;
     }
   }

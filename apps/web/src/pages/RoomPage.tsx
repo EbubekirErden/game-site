@@ -3,11 +3,13 @@ import React from "react";
 import { getCardDef } from "@game-site/shared";
 import type { CardInstance, PlayerID, PlayerViewState } from "@game-site/shared";
 
+import { ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
-import { cardIdByValue, formatEvent, playerNameById } from "../lib/gamePresentation.js";
+import { cardIdByValue, playerNameById } from "../lib/gamePresentation.js";
 
 type RoomPageProps = {
   state: PlayerViewState;
+  gameTitle: string;
   message: string;
   lastNote: string;
   selectedInstanceId: string | null;
@@ -19,10 +21,13 @@ type RoomPageProps = {
   onToggleReady: (isReady: boolean) => void;
   onStartRound: () => void;
   onPlayCard: () => void;
+  onLeaveRoom: () => void;
+  onBackToGames: () => void;
 };
 
 export function RoomPage({
   state,
+  gameTitle,
   message,
   lastNote,
   selectedInstanceId,
@@ -34,6 +39,8 @@ export function RoomPage({
   onToggleReady,
   onStartRound,
   onPlayCard,
+  onLeaveRoom,
+  onBackToGames,
 }: RoomPageProps) {
   const self = state.players.find((player) => player.id === state.selfPlayerId) ?? null;
   const isCreator = state.creatorId === state.selfPlayerId;
@@ -78,13 +85,19 @@ export function RoomPage({
     <main className="room-shell">
       <section className="room-topbar">
         <div>
-          <h1>Room {state.roomId}</h1>
+          <h1>{gameTitle}</h1>
           <p>{showLobby ? "Waiting room" : state.phase.replaceAll("_", " ")}</p>
         </div>
         <div className="topbar-chips">
+          <button type="button" className="secondary-button topbar-button" onClick={onLeaveRoom}>
+            Leave room
+          </button>
+          <button type="button" className="secondary-button topbar-button" onClick={onBackToGames}>
+            Back to games
+          </button>
           {showLobby ? <span className="status-pill">{readyCount}/{playerCount} ready</span> : null}
           {state.phase === "in_round" ? <span className={`status-pill${isMyTurn ? " is-active" : ""}`}>{isMyTurn ? "Your turn" : "Waiting"}</span> : null}
-          <span className="status-pill">Creator {playerNameById(state, state.creatorId)}</span>
+          <span className="status-pill">Room {state.roomId}</span>
         </div>
       </section>
 
@@ -132,14 +145,7 @@ export function RoomPage({
 
           <section className="sidebar-section">
             <h3>Activity</h3>
-            <div className="log-list">
-              {state.log.length === 0 ? <span className="empty-label">No actions yet.</span> : null}
-              {state.log.slice(-8).reverse().map((event, index) => (
-                <div key={`${event.type}-${index}`} className="log-item">
-                  {formatEvent(event, state)}
-                </div>
-              ))}
-            </div>
+            <ActivityFeed events={state.log} state={state} />
           </section>
 
           {lastNote ? (

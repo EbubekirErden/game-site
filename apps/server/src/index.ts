@@ -76,6 +76,23 @@ io.on("connection", (socket) => {
     emitRoomState(roomId);
   });
 
+  socket.on("room:leave", ({ roomId }) => {
+    roomBySocketId.delete(socket.id);
+    socket.leave(roomId);
+
+    const game = rooms.get(roomId);
+    if (!game) return;
+
+    const next = removePlayer(game, socket.id);
+    if (next.players.length === 0) {
+      rooms.delete(roomId);
+      return;
+    }
+
+    rooms.set(roomId, next);
+    emitRoomState(roomId);
+  });
+
   socket.on("round:start", ({ roomId }) => {
     const game = rooms.get(roomId);
     if (!game) {

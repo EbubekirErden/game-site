@@ -24,6 +24,7 @@ function formatPrivateNote(note: ActionNote): string {
 }
 
 export function App() {
+  const [selectedGame, setSelectedGame] = React.useState<string | null>(null);
   const [playerName, setPlayerName] = React.useState("");
   const [joinCode, setJoinCode] = React.useState("");
   const [state, setState] = React.useState<PlayerViewState | null>(null);
@@ -93,6 +94,11 @@ export function App() {
   }
 
   function handleCreateRoom() {
+    if (!selectedGame) {
+      setMessage("Choose a game first.");
+      return;
+    }
+
     const trimmedName = requireName();
     if (!trimmedName) return;
 
@@ -112,6 +118,11 @@ export function App() {
   }
 
   function handleJoinRoom() {
+    if (!selectedGame) {
+      setMessage("Choose a game first.");
+      return;
+    }
+
     const trimmedName = requireName();
     if (!trimmedName) return;
 
@@ -181,13 +192,34 @@ export function App() {
     setSelectedInstanceId(null);
   }
 
+  function handleLeaveRoom(backToGames: boolean) {
+    if (state) {
+      socket.emit("room:leave", { roomId: state.roomId });
+    }
+
+    setState(null);
+    setPendingAction(null);
+    setLastNote("");
+    setSelectedInstanceId(null);
+    setTargetPlayerId("");
+    setGuessedValue("2");
+    setMessage(backToGames ? "Choose a game to create or join a room." : "You left the room.");
+
+    if (backToGames) {
+      setSelectedGame(null);
+      setJoinCode("");
+    }
+  }
+
   if (!state) {
     return (
       <HomePage
+        selectedGame={selectedGame}
         playerName={playerName}
         joinCode={joinCode}
         pendingAction={pendingAction}
         message={message}
+        onSelectGame={setSelectedGame}
         onPlayerNameChange={setPlayerName}
         onJoinCodeChange={setJoinCode}
         onCreateRoom={handleCreateRoom}
@@ -199,6 +231,7 @@ export function App() {
   return (
     <RoomPage
       state={state}
+      gameTitle={selectedGame === "love-letter" ? "Love Letter" : "Game Room"}
       message={message}
       lastNote={lastNote}
       selectedInstanceId={selectedInstanceId}
@@ -210,6 +243,8 @@ export function App() {
       onToggleReady={handleToggleReady}
       onStartRound={handleStartRound}
       onPlayCard={handlePlayCard}
+      onLeaveRoom={() => handleLeaveRoom(false)}
+      onBackToGames={() => handleLeaveRoom(true)}
     />
   );
 }

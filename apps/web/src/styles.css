@@ -71,6 +71,61 @@ button {
   gap: 18px;
 }
 
+.game-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.game-card {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid #d9e3ee;
+  border-radius: 16px;
+  background: #f9fbfd;
+  text-align: left;
+  color: inherit;
+}
+
+.game-card.is-selected {
+  border-color: #a9c6f6;
+  background: #eef5ff;
+  box-shadow: inset 0 0 0 1px #a9c6f6;
+}
+
+.game-card strong {
+  font-size: 1.05rem;
+}
+
+.game-card span {
+  color: #647180;
+}
+
+.setup-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #dfe7ef;
+  border-radius: 16px;
+  background: #fbfcfe;
+}
+
+.setup-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.setup-header p {
+  margin: 6px 0 0;
+  color: #647180;
+}
+
+.setup-stack {
+  display: grid;
+  gap: 14px;
+}
+
 .home-header h1,
 .room-topbar h1,
 .panel h2,
@@ -150,15 +205,21 @@ button {
   justify-content: flex-end;
 }
 
+.topbar-button {
+  padding-inline: 12px;
+}
+
 .room-layout {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
+  align-items: start;
 }
 
 .room-main {
   display: grid;
   gap: 18px;
+  align-content: start;
 }
 
 .panel {
@@ -567,6 +628,14 @@ select:focus {
   gap: 10px;
 }
 
+.activity-feed {
+  display: grid;
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .log-item {
   padding: 11px 12px;
   border-radius: 12px;
@@ -580,7 +649,8 @@ select:focus {
 }
 
 @media (max-width: 980px) {
-  .home-grid,
+  .game-picker,
+  .setup-stack,
   .lobby-summary-grid,
   .room-layout {
     grid-template-columns: 1fr;

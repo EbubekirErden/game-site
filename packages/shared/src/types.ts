@@ -2,14 +2,21 @@
 
 export type PlayerID = string;
 export type RoomID = string;
-export type CardID = string;
+export type CardID =
+  | "guard"
+  | "priest"
+  | "baron"
+  | "handmaid"
+  | "prince"
+  | "king"
+  | "countess"
+  | "princess";
 
 export type PlayerStatus = "active" | "eliminated";
-
-export type Visibility = "private" | "public";
+export type GamePhase = "lobby" | "in_round" | "round_over" | "match_over";
 
 export interface CardDef {
-  id: string;
+  id: CardID;
   name: string;
   value: number;
   copies: number;
@@ -26,8 +33,9 @@ export type CardEffectType =
   | "compare_hands"
   | "protection"
   | "force_discard"
-  | "self_discard"
-  | "score_high";
+  | "swap_hands"
+  | "forced_discard"
+  | "princess_discard";
 
 export type TargetRule =
   | "none"
@@ -45,34 +53,39 @@ export interface PlayerState {
   id: PlayerID;
   name: string;
   hand: CardInstance[];
+  discardPile: CardInstance[];
   status: PlayerStatus;
   protectedUntilNextTurn: boolean;
-  score: number;
+  tokens: number;
 }
 
 export interface PublicPlayerState {
   id: PlayerID;
   name: string;
   handCount: number;
+  discardPile: CardInstance[];
   status: PlayerStatus;
   protectedUntilNextTurn: boolean;
-  score: number;
+  tokens: number;
 }
 
 export interface RoundState {
   deck: CardInstance[];
-  discardPile: CardInstance[];
-  burnedCardCount: number;
+  setAsideCard: CardInstance | null;
+  visibleRemovedCards: CardInstance[];
   currentPlayerId: PlayerID | null;
   turnNumber: number;
+  roundWinners: PlayerID[];
+  lastRoundStarterId: PlayerID | null;
 }
 
 export interface GameState {
   roomId: RoomID;
-  phase: "lobby" | "in_round" | "round_over" | "match_over";
+  phase: GamePhase;
   players: PlayerState[];
   round: RoundState | null;
-  winnerId: PlayerID | null;
+  roundWinnerIds: PlayerID[];
+  matchWinnerIds: PlayerID[];
   log: GameEvent[];
 }
 
@@ -81,21 +94,38 @@ export type GameEvent =
   | { type: "round_started" }
   | { type: "card_drawn"; playerId: PlayerID }
   | { type: "card_played"; playerId: PlayerID; cardId: CardID }
+  | { type: "card_guessed"; playerId: PlayerID; targetPlayerId: PlayerID; guessedValue: number }
+  | { type: "card_compared"; playerId: PlayerID; targetPlayerId: PlayerID }
+  | { type: "card_swapped"; playerId: PlayerID; targetPlayerId: PlayerID }
+  | { type: "card_seen"; playerId: PlayerID; targetPlayerId: PlayerID; seenCardId: CardID }
+  | { type: "player_protected"; playerId: PlayerID }
   | { type: "player_eliminated"; playerId: PlayerID }
-  | { type: "round_ended"; winnerId: PlayerID | null }
-  | { type: "score_updated"; playerId: PlayerID; score: number };
+  | { type: "round_ended"; winnerIds: PlayerID[] }
+  | { type: "token_awarded"; playerId: PlayerID; tokens: number }
+  | { type: "match_ended"; winnerIds: PlayerID[] };
 
 export interface PublicGameState {
   roomId: RoomID;
-  phase: GameState["phase"];
+  phase: GamePhase;
   players: PublicPlayerState[];
   round: {
-    discardPile: CardInstance[];
     deckCount: number;
-    burnedCardCount: number;
+    visibleRemovedCards: CardInstance[];
     currentPlayerId: PlayerID | null;
     turnNumber: number;
+    roundWinners: PlayerID[];
+    lastRoundStarterId: PlayerID | null;
   } | null;
-  winnerId: PlayerID | null;
+  roundWinnerIds: PlayerID[];
+  matchWinnerIds: PlayerID[];
   log: GameEvent[];
+}
+
+export interface PlayerViewState extends PublicGameState {
+  selfPlayerId: PlayerID;
+  players: Array<
+    PublicPlayerState & {
+      hand: CardInstance[];
+    }
+  >;
 }

@@ -33,7 +33,8 @@ export function createGame(roomId: RoomID): GameState {
     phase: "lobby",
     players: [],
     round: null,
-    winnerId: null,
+    roundWinnerIds: [],
+    matchWinnerIds: [],
     log: [],
   };
 }
@@ -46,9 +47,10 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
     id,
     name,
     hand: [],
+    discardPile: [],
     status: "active",
     protectedUntilNextTurn: false,
-    score: 0,
+    tokens: 0,
   };
 
   return {
@@ -63,10 +65,12 @@ export function startRound(state: GameState): GameState {
 
   const deck = buildDeck();
   const burned = deck.splice(0, 1);
+  const visibleRemovedCards = state.players.length === 2 ? deck.splice(0, 3) : [];
 
   const players = state.players.map((p) => ({
     ...p,
     hand: [deck.shift()!],
+    discardPile: [],
     status: "active" as const,
     protectedUntilNextTurn: false,
   }));
@@ -83,12 +87,14 @@ export function startRound(state: GameState): GameState {
     players,
     round: {
       deck,
-      discardPile: [],
-      burnedCardCount: burned.length,
+      setAsideCard: burned[0] ?? null,
+      visibleRemovedCards,
       currentPlayerId: firstPlayerId,
       turnNumber: 1,
+      roundWinners: [],
+      lastRoundStarterId: firstPlayerId,
     },
-    winnerId: null,
+    roundWinnerIds: [],
     log: [...state.log, { type: "round_started" }, ...(firstPlayerId ? [{ type: "card_drawn" as const, playerId: firstPlayerId }] : [])],
   };
 }

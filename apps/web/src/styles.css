@@ -666,7 +666,11 @@ input::placeholder {
   flex-direction: column;
   align-items: center;
   gap: 16px; /* Uses flex gap instead of absolute positioning! */
+  animation: card-deal-in 220ms ease-out both;
 }
+
+.hand-card-wrapper:nth-child(2) { animation-delay: 50ms; }
+.hand-card-wrapper:nth-child(3) { animation-delay: 90ms; }
 
 .inline-play-btn {
   width: 100%;
@@ -726,6 +730,16 @@ input::placeholder {
 
 @keyframes slide-up-fade {
   from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes card-deal-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes panel-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -806,6 +820,19 @@ input::placeholder {
 
 .deck-status-panel .board-header {
   margin-bottom: 0;
+}
+
+.status-banner-panel {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  border-color: rgba(255, 123, 114, 0.35);
+  background: rgba(78, 26, 26, 0.32);
+  animation: panel-fade-in 180ms ease-out;
+}
+
+.status-banner-panel .error-text {
+  margin: 0;
+  font-size: 0.95rem;
 }
 
 /* --- ROUND OVER SCOREBOARD --- */
@@ -914,11 +941,32 @@ input::placeholder {
   color: #c9d1d9; font-size: 0.9rem; 
   border-left: 3px solid #3d4c5f; 
   height: fit-content;
+  animation: panel-fade-in 180ms ease-out;
 }
 
 .log-item.is-danger {
   border-left-color: #e74c3c;
   background: rgba(96, 24, 24, 0.28);
+}
+
+.log-item.is-success {
+  border-left-color: #2ecc71;
+  background: rgba(18, 74, 44, 0.28);
+}
+
+.log-item.is-gold {
+  border-left-color: #f1c40f;
+  background: rgba(97, 73, 12, 0.28);
+}
+
+.log-item.is-info {
+  border-left-color: #4aa3ff;
+  background: rgba(19, 48, 89, 0.28);
+}
+
+.log-item.is-protected {
+  border-left-color: #ff9ad5;
+  background: rgba(91, 31, 69, 0.28);
 }
 
 .log-badge {
@@ -938,4 +986,28 @@ input::placeholder {
   background: rgba(231, 76, 60, 0.18);
   color: #ff9f96;
   border: 1px solid rgba(231, 76, 60, 0.35);
+}
+
+.log-badge.is-success {
+  background: rgba(46, 204, 113, 0.18);
+  color: #a9f3c6;
+  border: 1px solid rgba(46, 204, 113, 0.35);
+}
+
+.log-badge.is-gold {
+  background: rgba(241, 196, 15, 0.18);
+  color: #ffe08a;
+  border: 1px solid rgba(241, 196, 15, 0.35);
+}
+
+.log-badge.is-info {
+  background: rgba(74, 163, 255, 0.18);
+  color: #b4dcff;
+  border: 1px solid rgba(74, 163, 255, 0.35);
+}
+
+.log-badge.is-protected {
+  background: rgba(255, 154, 213, 0.18);
+  color: #ffc7e9;
+  border: 1px solid rgba(255, 154, 213, 0.35);
 }

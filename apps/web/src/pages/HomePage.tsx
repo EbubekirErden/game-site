@@ -1,4 +1,10 @@
 type HomePageProps = {
+  games: Array<{
+    id: string;
+    title: string;
+    description: string;
+    available: boolean;
+  }>;
   selectedGame: string | null;
   playerName: string;
   joinCode: string;
@@ -12,6 +18,7 @@ type HomePageProps = {
 };
 
 export function HomePage({
+  games,
   selectedGame,
   playerName,
   joinCode,
@@ -32,14 +39,18 @@ export function HomePage({
         </div>
 
         <section className="game-picker">
-          <button
-            type="button"
-            className={`game-card${selectedGame === "love-letter" ? " is-selected" : ""}`}
-            onClick={() => onSelectGame("love-letter")}
-          >
-            <strong>Love Letter</strong>
-            <span>Classic deduction card game</span>
-          </button>
+          {games.map((game) => (
+            <button
+              key={game.id}
+              type="button"
+              className={`game-card${selectedGame === game.id ? " is-selected" : ""}${!game.available ? " is-disabled" : ""}`}
+              onClick={() => game.available && onSelectGame(game.id)}
+              disabled={!game.available}
+            >
+              <strong>{game.title}</strong>
+              <span>{game.description}</span>
+            </button>
+          ))}
         </section>
 
         {selectedGame ? (

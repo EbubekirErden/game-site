@@ -231,12 +231,13 @@ export function RoomPage({
                   ))}
                 </div>
 
-                {state.round?.visibleRemovedCards.length ? (
-                  <div className="removed-section">
-                    <h3>Visible removed cards</h3>
-                    <div className="discard-row">
-                      {state.round.visibleRemovedCards.map((card) => (
-                        <CardView key={card.instanceId} card={card} compact />
+              {state.round?.visibleRemovedCards.length ? (
+                <div className="removed-section">
+                  <h3>2-player setup cards</h3>
+                  <p className="muted">In 2-player Love Letter, three cards are revealed and removed from the round.</p>
+                  <div className="discard-row">
+                    {state.round.visibleRemovedCards.map((card) => (
+                      <CardView key={card.instanceId} card={card} compact />
                       ))}
                     </div>
                   </div>
@@ -252,8 +253,8 @@ export function RoomPage({
               <section className="panel hand-panel">
                 <div className="section-header">
                   <div>
-                    <h2>Your hand</h2>
-                    <p className="muted">{isMyTurn ? "Choose a card, then confirm the action." : "Waiting for your turn."}</p>
+                    <h2>Play area</h2>
+                    <p className="muted">{isMyTurn ? "Bring a card to the middle, choose any target, then play it." : "Waiting for your turn."}</p>
                   </div>
                   {isCreator && state.phase === "round_over" ? (
                     <button type="button" className="secondary-button" onClick={onStartRound}>
@@ -262,7 +263,65 @@ export function RoomPage({
                   ) : null}
                 </div>
 
-                <div className="hand-row">
+                <div className="play-stage">
+                  <div className="play-stage-card">
+                    {selectedCard ? (
+                      <CardView card={selectedCard} spotlight />
+                    ) : (
+                      <div className="card-stage-placeholder">Select a card from your hand to inspect it here.</div>
+                    )}
+                  </div>
+
+                  <div className="play-stage-controls">
+                    <div className="action-summary">
+                      <h3>Selected card</h3>
+                      <p className="muted">{selectedCardDef ? `${selectedCardDef.name} (${selectedCardDef.value})` : "Nothing selected yet."}</p>
+                    </div>
+
+                    <div className="action-controls">
+                      {targetNeeded ? (
+                        <label>
+                          Target
+                          <select value={targetPlayerId} onChange={(event) => onTargetPlayerChange(event.target.value)}>
+                            {targetablePlayers.map((player) => (
+                              <option key={player.id} value={player.id}>
+                                {player.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+
+                      {guessNeeded ? (
+                        <label>
+                          Guard guess
+                          <select value={guessedValue} onChange={(event) => onGuessedValueChange(event.target.value)}>
+                            {[2, 3, 4, 5, 6, 7, 8].map((value) => (
+                              <option key={value} value={value}>
+                                {value} • {getCardDef(cardIdByValue(value)).name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        className="primary-button play-action-button"
+                        disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId) || (guessNeeded && !guessedValue)}
+                        onClick={onPlayCard}
+                      >
+                        Play card
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="hand-dock">
+                  <div className="hand-dock-header">
+                    <h3>Your hand</h3>
+                    <p className="muted">Cards rest here until you bring one to the play area.</p>
+                  </div>
                   {self?.hand.map((card) => (
                     <CardView
                       key={card.instanceId}
@@ -273,50 +332,6 @@ export function RoomPage({
                     />
                   ))}
                   {!self?.hand.length ? <span className="empty-label">No hand available.</span> : null}
-                </div>
-
-                <div className="action-panel">
-                  <div className="action-summary">
-                    <h3>Selected action</h3>
-                    <p className="muted">{selectedCardDef ? `${selectedCardDef.name} (${selectedCardDef.value})` : "Select a card from your hand."}</p>
-                  </div>
-
-                  <div className="action-controls">
-                    {targetNeeded ? (
-                      <label>
-                        Target
-                        <select value={targetPlayerId} onChange={(event) => onTargetPlayerChange(event.target.value)}>
-                          {targetablePlayers.map((player) => (
-                            <option key={player.id} value={player.id}>
-                              {player.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-
-                    {guessNeeded ? (
-                      <label>
-                        Guard guess
-                        <select value={guessedValue} onChange={(event) => onGuessedValueChange(event.target.value)}>
-                          {[2, 3, 4, 5, 6, 7, 8].map((value) => (
-                            <option key={value} value={value}>
-                              {value} • {getCardDef(cardIdByValue(value)).name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId) || (guessNeeded && !guessedValue)}
-                      onClick={onPlayCard}
-                    >
-                      Play card
-                    </button>
-                  </div>
                 </div>
 
                 <p className="helper-text">{message}</p>

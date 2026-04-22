@@ -8,17 +8,18 @@ type CardViewProps = {
   selected?: boolean;
   onClick?: () => void;
   compact?: boolean;
+  spotlight?: boolean;
 };
 
-const CARD_ART: Record<CardInstance["cardId"], { symbol: string; accent: string; label: string }> = {
-  guard: { symbol: "shield", accent: "#3d5a80", label: "Watch" },
-  priest: { symbol: "star", accent: "#5b7c4d", label: "Truth" },
-  baron: { symbol: "diamond", accent: "#9c6644", label: "Duel" },
-  handmaid: { symbol: "flower", accent: "#b56576", label: "Grace" },
-  prince: { symbol: "sun", accent: "#d4a373", label: "Choice" },
-  king: { symbol: "crown", accent: "#8d6a9f", label: "Rule" },
-  countess: { symbol: "moon", accent: "#7f5539", label: "Whisper" },
-  princess: { symbol: "heart", accent: "#c1121f", label: "Rose" },
+const CARD_ART: Record<CardInstance["cardId"], { symbol: string; accent: string }> = {
+  guard: { symbol: "shield", accent: "#3d5a80" },
+  priest: { symbol: "star", accent: "#5b7c4d" },
+  baron: { symbol: "diamond", accent: "#9c6644" },
+  handmaid: { symbol: "flower", accent: "#b56576" },
+  prince: { symbol: "sun", accent: "#d4a373" },
+  king: { symbol: "crown", accent: "#8d6a9f" },
+  countess: { symbol: "moon", accent: "#7f5539" },
+  princess: { symbol: "heart", accent: "#c1121f" },
 };
 
 function Icon({ kind, accent }: { kind: string; accent: string }) {
@@ -97,7 +98,7 @@ function Icon({ kind, accent }: { kind: string; accent: string }) {
   }
 }
 
-export function CardView({ card, hidden = false, selectable = false, selected = false, onClick, compact = false }: CardViewProps) {
+export function CardView({ card, hidden = false, selectable = false, selected = false, onClick, compact = false, spotlight = false }: CardViewProps) {
   const cardDef = getCardDef(card.cardId);
   const art = CARD_ART[card.cardId];
 
@@ -118,7 +119,7 @@ export function CardView({ card, hidden = false, selectable = false, selected = 
   return (
     <button
       type="button"
-      className={`card-view${selected ? " is-selected" : ""}${selectable ? " is-clickable" : ""}${compact ? " card-view-compact" : ""}`}
+      className={`card-view${selected ? " is-selected" : ""}${selectable ? " is-clickable" : ""}${compact ? " card-view-compact" : ""}${spotlight ? " card-view-spotlight" : ""}`}
       onClick={onClick}
       disabled={!onClick}
       style={
@@ -129,15 +130,37 @@ export function CardView({ card, hidden = false, selectable = false, selected = 
     >
       <div className="card-view-topline">
         <span className="card-view-rank">{cardDef.value}</span>
-        <span className="card-view-tag">{art.label}</span>
       </div>
       <div className="card-view-art">
         <Icon kind={art.symbol} accent={art.accent} />
       </div>
       <div className="card-view-body">
         <strong>{cardDef.name}</strong>
-        <span>{cardDef.effect.replaceAll("_", " ")}</span>
+        <span>{formatCardEffect(card.cardId)}</span>
       </div>
     </button>
   );
+}
+
+function formatCardEffect(cardId: CardInstance["cardId"]): string {
+  switch (cardId) {
+    case "guard":
+      return "Guess another player's card.";
+    case "priest":
+      return "Look at another player's hand.";
+    case "baron":
+      return "Compare hands. Lower card is out.";
+    case "handmaid":
+      return "Protection until your next turn.";
+    case "prince":
+      return "Choose a player to discard and redraw.";
+    case "king":
+      return "Trade hands with another player.";
+    case "countess":
+      return "Must be played with King or Prince.";
+    case "princess":
+      return "If discarded, you are out.";
+    default:
+      return "";
+  }
 }

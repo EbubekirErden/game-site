@@ -1,4 +1,5 @@
 import React from "react";
+import { Navigate, Route, Routes, matchPath, useLocation, useNavigate } from "react-router-dom";
 
 import { getCardDef } from "@game-site/shared";
 import type { CardInstance, PlayerID, PlayerViewState } from "@game-site/shared";
@@ -23,7 +24,27 @@ function formatPrivateNote(note: ActionNote): string {
   return `Comparison result: you had ${playerCard}, they had ${targetCard}.`;
 }
 
+const GAMES = [
+  {
+    id: "love-letter",
+    title: "Love Letter",
+    description: "Classic deduction card game",
+    available: true,
+  },
+  {
+    id: "coming-soon",
+    title: "More Games Soon",
+    description: "This page is structured to support additional games.",
+    available: false,
+  },
+];
+
 export function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const roomRouteMatch = matchPath("/games/:gameId/rooms/:roomId", location.pathname);
+  const routeGameId = roomRouteMatch?.params.gameId;
+  const routeRoomId = roomRouteMatch?.params.roomId;
   const [selectedGame, setSelectedGame] = React.useState<string | null>(null);
   const [playerName, setPlayerName] = React.useState("");
   const [joinCode, setJoinCode] = React.useState("");
@@ -41,6 +62,9 @@ export function App() {
       setPendingAction(null);
       setJoinCode(nextState.roomId);
       setMessage(nextState.phase === "lobby" ? "Room ready. Players can toggle ready." : "Game in progress.");
+      if (location.pathname !== `/games/love-letter/rooms/${nextState.roomId}`) {
+        navigate(`/games/love-letter/rooms/${nextState.roomId}`, { replace: true });
+      }
     };
 
     const onConnect = () => {
@@ -81,7 +105,13 @@ export function App() {
       socket.off("connect_error", onConnectError);
       socket.off("disconnect", onDisconnect);
     };
-  }, []);
+  }, [location.pathname, navigate]);
+
+  React.useEffect(() => {
+    if (routeGameId === "love-letter") {
+      setSelectedGame("love-letter");
+    }
+  }, [routeGameId]);
 
   function requireName(): string | null {
     const trimmedName = playerName.trim();
@@ -113,6 +143,7 @@ export function App() {
 
       if (response.roomId) {
         setJoinCode(response.roomId);
+        navigate(`/games/${selectedGame}/rooms/${response.roomId}`);
       }
     });
   }
@@ -146,6 +177,7 @@ export function App() {
 
       if (response.roomId) {
         setJoinCode(response.roomId);
+        navigate(`/games/${selectedGame}/rooms/${response.roomId}`);
       }
     });
   }
@@ -209,42 +241,57 @@ export function App() {
       setSelectedGame(null);
       setJoinCode("");
     }
-  }
 
-  if (!state) {
-    return (
-      <HomePage
-        selectedGame={selectedGame}
-        playerName={playerName}
-        joinCode={joinCode}
-        pendingAction={pendingAction}
-        message={message}
-        onSelectGame={setSelectedGame}
-        onPlayerNameChange={setPlayerName}
-        onJoinCodeChange={setJoinCode}
-        onCreateRoom={handleCreateRoom}
-        onJoinRoom={handleJoinRoom}
-      />
-    );
+    navigate("/");
   }
 
   return (
-    <RoomPage
-      state={state}
-      gameTitle={selectedGame === "love-letter" ? "Love Letter" : "Game Room"}
-      message={message}
-      lastNote={lastNote}
-      selectedInstanceId={selectedInstanceId}
-      targetPlayerId={targetPlayerId}
-      guessedValue={guessedValue}
-      onSelectCard={setSelectedInstanceId}
-      onTargetPlayerChange={setTargetPlayerId}
-      onGuessedValueChange={setGuessedValue}
-      onToggleReady={handleToggleReady}
-      onStartRound={handleStartRound}
-      onPlayCard={handlePlayCard}
-      onLeaveRoom={() => handleLeaveRoom(false)}
-      onBackToGames={() => handleLeaveRoom(true)}
-    />
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <HomePage
+            games={GAMES}
+            selectedGame={selectedGame}
+            playerName={playerName}
+            joinCode={joinCode}
+            pendingAction={pendingAction}
+            message={message}
+            onSelectGame={setSelectedGame}
+            onPlayerNameChange={setPlayerName}
+            onJoinCodeChange={setJoinCode}
+            onCreateRoom={handleCreateRoom}
+            onJoinRoom={handleJoinRoom}
+          />
+        }
+      />
+      <Route
+        path="/games/:gameId/rooms/:roomId"
+        element={
+          state && routeRoomId === state.roomId ? (
+            <RoomPage
+              state={state}
+              gameTitle={selectedGame === "love-letter" ? "Love Letter" : "Game Room"}
+              message={message}
+              lastNote={lastNote}
+              selectedInstanceId={selectedInstanceId}
+              targetPlayerId={targetPlayerId}
+              guessedValue={guessedValue}
+              onSelectCard={setSelectedInstanceId}
+              onTargetPlayerChange={setTargetPlayerId}
+              onGuessedValueChange={setGuessedValue}
+              onToggleReady={handleToggleReady}
+              onStartRound={handleStartRound}
+              onPlayCard={handlePlayCard}
+              onLeaveRoom={() => handleLeaveRoom(false)}
+              onBackToGames={() => handleLeaveRoom(true)}
+            />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

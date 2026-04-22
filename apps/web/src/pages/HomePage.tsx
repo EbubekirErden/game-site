@@ -104,7 +104,7 @@ export function HomePage({
                       className={`mode-pill ${selectedMode === "classic" ? "is-selected" : ""}`}
                       onClick={() => onSelectMode("classic")}
                     >
-                      Classic
+                      Classic (2-4 people)
                     </button>
                     <button
                       type="button"

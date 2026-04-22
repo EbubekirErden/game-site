@@ -3,7 +3,8 @@
 import { randomUUID } from "node:crypto";
 
 import { BASE_CARDS } from "./cards.js";
-import type { CardInstance, GameState, PlayerState, RoomID } from "./types.js";
+import { resolvePlayAction } from "./rules.js";
+import type { CardID, CardInstance, GameState, PlayerID, PlayerState, PublicGameState, RoomID } from "./types.js";
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
@@ -25,6 +26,134 @@ function buildDeck(): CardInstance[] {
     }
   }
   return shuffle(deck);
+}
+
+function getActivePlayers(players: PlayerState[]): PlayerState[] {
+  return players.filter((player) => player.status === "active");
+}
+
+function getPlayerById(players: PlayerState[], playerId: PlayerID): PlayerState | undefined {
+  return players.find((player) => player.id === playerId);
+}
+
+function getCardValue(cardId: CardID): number {
+  const card = BASE_CARDS.find((candidate) => candidate.id === cardId);
+  if (!card) {
+    throw new Error(`Unknown card id: ${cardId}`);
+  }
+  return card.value;
+}
+
+function getWinningTokenCount(playerCount: number): number {
+  if (playerCount <= 2) return 7;
+  if (playerCount === 3) return 5;
+  return 4;
+}
+
+function drawToActivePlayer(state: GameState, playerId: PlayerID): GameState {
+  if (!state.round) return state;
+
+  const players = state.players.map((player) => ({
+    ...player,
+    hand: [...player.hand],
+    discardPile: [...player.discardPile],
+  }));
+  const round = { ...state.round, deck: [...state.round.deck], visibleRemovedCards: [...state.round.visibleRemovedCards], roundWinners: [...state.round.roundWinners] };
+  const player = getPlayerById(players, playerId);
+  if (!player || player.status !== "active") {
+    return state;
+  }
+
+  player.protectedUntilNextTurn = false;
+  const drawn = round.deck.shift();
+  if (drawn) {
+    player.hand.push(drawn);
+    return {
+      ...state,
+      players,
+      round,
+      log: [...state.log, { type: "card_drawn", playerId }],
+    };
+  }
+
+  return {
+    ...state,
+    players,
+    round,
+  };
+}
+
+function getNextActivePlayerId(players: PlayerState[], currentPlayerId: PlayerID): PlayerID | null {
+  const currentIndex = players.findIndex((player) => player.id === currentPlayerId);
+  if (currentIndex === -1) return null;
+
+  for (let offset = 1; offset <= players.length; offset += 1) {
+    const candidate = players[(currentIndex + offset) % players.length];
+    if (candidate.status === "active") {
+      return candidate.id;
+    }
+  }
+
+  return null;
+}
+
+function finishRound(state: GameState, winnerIds: PlayerID[]): GameState {
+  const tokenTarget = getWinningTokenCount(state.players.length);
+  const players = state.players.map((player) => {
+    const nextTokens = winnerIds.includes(player.id) ? player.tokens + 1 : player.tokens;
+    return {
+      ...player,
+      hand: [...player.hand],
+      discardPile: [...player.discardPile],
+      tokens: nextTokens,
+    };
+  });
+  const matchWinnerIds = players.filter((player) => player.tokens >= tokenTarget).map((player) => player.id);
+  const awardedLogs = players
+    .filter((player) => winnerIds.includes(player.id))
+    .map((player) => ({ type: "token_awarded" as const, playerId: player.id, tokens: player.tokens }));
+  const endLogs = [
+    ...state.log,
+    { type: "round_ended" as const, winnerIds },
+    ...awardedLogs,
+    ...(matchWinnerIds.length > 0 ? [{ type: "match_ended" as const, winnerIds: matchWinnerIds }] : []),
+  ];
+
+  return {
+    ...state,
+    phase: matchWinnerIds.length > 0 ? "match_over" : "round_over",
+    players,
+    round: state.round
+      ? {
+          ...state.round,
+          roundWinners: [...winnerIds],
+        }
+      : null,
+    roundWinnerIds: [...winnerIds],
+    matchWinnerIds,
+    log: endLogs,
+  };
+}
+
+function getRoundWinners(players: PlayerState[]): PlayerID[] {
+  const activePlayers = getActivePlayers(players);
+  if (activePlayers.length <= 1) {
+    return activePlayers.map((player) => player.id);
+  }
+
+  const highestValue = Math.max(...activePlayers.map((player) => getCardValue(player.hand[0].cardId)));
+  const highestPlayers = activePlayers.filter((player) => getCardValue(player.hand[0].cardId) === highestValue);
+  if (highestPlayers.length <= 1) {
+    return highestPlayers.map((player) => player.id);
+  }
+
+  const bestDiscardTotal = Math.max(
+    ...highestPlayers.map((player) => player.discardPile.reduce((total, card) => total + getCardValue(card.cardId), 0)),
+  );
+
+  return highestPlayers
+    .filter((player) => player.discardPile.reduce((total, card) => total + getCardValue(card.cardId), 0) === bestDiscardTotal)
+    .map((player) => player.id);
 }
 
 export function createGame(roomId: RoomID): GameState {
@@ -61,11 +190,15 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
 }
 
 export function startRound(state: GameState): GameState {
-  if (state.players.length < 2) return state;
+  if (state.players.length < 2 || state.phase === "match_over") return state;
 
   const deck = buildDeck();
   const burned = deck.splice(0, 1);
   const visibleRemovedCards = state.players.length === 2 ? deck.splice(0, 3) : [];
+  const starterId =
+    state.roundWinnerIds.find((winnerId) => state.players.some((player) => player.id === winnerId)) ??
+    state.players[0]?.id ??
+    null;
 
   const players = state.players.map((p) => ({
     ...p,
@@ -75,13 +208,17 @@ export function startRound(state: GameState): GameState {
     protectedUntilNextTurn: false,
   }));
 
-  const firstPlayerId = players[0]?.id ?? null;
+  const firstPlayerId = starterId;
 
   if (firstPlayerId) {
-    players[0].hand.push(deck.shift()!);
+    const firstPlayer = getPlayerById(players, firstPlayerId);
+    const firstDraw = deck.shift();
+    if (firstPlayer && firstDraw) {
+      firstPlayer.hand.push(firstDraw);
+    }
   }
 
-  return {
+  const nextState: GameState = {
     ...state,
     phase: "in_round",
     players,
@@ -95,6 +232,88 @@ export function startRound(state: GameState): GameState {
       lastRoundStarterId: firstPlayerId,
     },
     roundWinnerIds: [],
-    log: [...state.log, { type: "round_started" }, ...(firstPlayerId ? [{ type: "card_drawn" as const, playerId: firstPlayerId }] : [])],
+    log: [...state.log, { type: "round_started" }],
+  };
+
+  const nextLog = firstPlayerId ? [...nextState.log, { type: "card_drawn" as const, playerId: firstPlayerId }] : nextState.log;
+  return {
+    ...nextState,
+    log: nextLog,
+  };
+}
+
+export function playCard(
+  state: GameState,
+  playerId: PlayerID,
+  instanceId: string,
+  options: { targetPlayerId?: PlayerID; guessedValue?: number } = {},
+): GameState {
+  const result = resolvePlayAction(state, {
+    type: "play_card",
+    playerId,
+    instanceId,
+    targetPlayerId: options.targetPlayerId,
+    guessedValue: options.guessedValue,
+  });
+
+  if (!result.ok || !result.state || !result.state.round) {
+    return state;
+  }
+
+  const resolvedState = result.state;
+  const resolvedRound = resolvedState.round!;
+  const activePlayers = getActivePlayers(resolvedState.players);
+
+  if (activePlayers.length <= 1) {
+    return finishRound(resolvedState, activePlayers.map((player) => player.id));
+  }
+
+  if (resolvedRound.deck.length === 0) {
+    return finishRound(resolvedState, getRoundWinners(resolvedState.players));
+  }
+
+  const nextPlayerId = getNextActivePlayerId(resolvedState.players, playerId);
+  if (!nextPlayerId) {
+    return finishRound(resolvedState, getRoundWinners(resolvedState.players));
+  }
+
+  const advancedState: GameState = {
+    ...resolvedState,
+    round: {
+      ...resolvedRound,
+      currentPlayerId: nextPlayerId,
+      turnNumber: resolvedRound.turnNumber + 1,
+    },
+  };
+
+  return drawToActivePlayer(advancedState, nextPlayerId);
+}
+
+export function toPublicGameState(state: GameState): PublicGameState {
+  return {
+    roomId: state.roomId,
+    phase: state.phase,
+    players: state.players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      handCount: player.hand.length,
+      discardPile: [...player.discardPile],
+      status: player.status,
+      protectedUntilNextTurn: player.protectedUntilNextTurn,
+      tokens: player.tokens,
+    })),
+    round: state.round
+      ? {
+          deckCount: state.round.deck.length,
+          visibleRemovedCards: [...state.round.visibleRemovedCards],
+          currentPlayerId: state.round.currentPlayerId,
+          turnNumber: state.round.turnNumber,
+          roundWinners: [...state.round.roundWinners],
+          lastRoundStarterId: state.round.lastRoundStarterId,
+        }
+      : null,
+    roundWinnerIds: [...state.roundWinnerIds],
+    matchWinnerIds: [...state.matchWinnerIds],
+    log: [...state.log],
   };
 }

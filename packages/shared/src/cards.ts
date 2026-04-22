@@ -68,3 +68,9 @@ export const BASE_CARDS: CardDef[] = [
     targetRule: "none",
   },
 ];
+
+export const CARD_BY_ID = Object.fromEntries(BASE_CARDS.map((card) => [card.id, card])) as Record<CardDef["id"], CardDef>;
+
+export function getCardDef(cardId: CardDef["id"]): CardDef {
+  return CARD_BY_ID[cardId];
+}

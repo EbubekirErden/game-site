@@ -31,6 +31,8 @@ export function cardIdByValue(value: number): CardID {
 
 export function formatErrorReason(reason: string): string {
   switch (reason) {
+    case "invalid_action":
+      return "That action could not be completed.";
     case "room_not_found":
       return "That room code was not found.";
     case "only_creator_can_start":
@@ -47,6 +49,12 @@ export function formatErrorReason(reason: string): string {
       return "You are not active in the current round.";
     case "card_not_in_hand":
       return "That card is no longer in your hand.";
+    case "round_not_active":
+      return "The round is no longer active.";
+    case "target_required":
+      return "Choose a valid target before playing that card.";
+    case "cannot_target_self":
+      return "That card cannot target yourself.";
     case "countess_must_be_played":
       return "You must play the Countess when you are also holding the Prince or King.";
     case "invalid_target":

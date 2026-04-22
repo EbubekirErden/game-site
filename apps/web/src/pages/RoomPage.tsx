@@ -60,6 +60,12 @@ export function RoomPage({
   const showBetweenRounds = state.phase === "round_over";
   const showMatchOver = state.phase === "match_over";
   const showReadyPills = showLobby || showBetweenRounds;
+  const statusMessage = ![
+    "Room ready. Players can toggle ready.",
+    "Game in progress.",
+    "Round over. Everyone can confirm ready for the next round.",
+    "Match over.",
+  ].includes(message) ? message : "";
   
   const guessNeeded = selectedCardDef?.id === "guard";
   const targetNeeded =
@@ -261,6 +267,11 @@ export function RoomPage({
             </div>
           ) : showBetweenRounds ? (
             <>
+              {statusMessage && (
+                <div className="game-panel status-banner-panel">
+                  <p className="error-text">{statusMessage}</p>
+                </div>
+              )}
               <div className="game-panel round-over-panel">
                 <h2>Round Over!</h2>
                 <p>Everyone needs to confirm ready before the next round can begin.</p>
@@ -338,7 +349,7 @@ export function RoomPage({
           ) : showMatchOver ? (
             <div className="game-panel round-over-panel">
               <h2>Match Over!</h2>
-              <p>The full match is finished, so there is no start-next-round step anymore.</p>
+              <p>A player reached the token goal for this player count, so the full match is finished.</p>
 
               <div className="winners-circle">
                 🏆 Match Winner(s): {state.matchWinnerIds?.map((id) => playerNameById(state, id)).join(", ")}
@@ -354,11 +365,25 @@ export function RoomPage({
               </div>
 
               <p className="muted-text" style={{ marginTop: "24px" }}>
-                Leave this room and create a new game when you want to play another full match.
+                Start a fresh game when you want to play another full match.
               </p>
+
+              <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "24px", justifyContent: "center", flexWrap: "wrap" }}>
+                <button type="button" className="primary-button" onClick={onBackToGames}>
+                  Start New Game
+                </button>
+                <button type="button" className="danger-button" onClick={onLeaveRoom}>
+                  Leave Room
+                </button>
+              </div>
             </div>
           ) : (
             <>
+              {statusMessage && (
+                <div className="game-panel status-banner-panel">
+                  <p className="error-text">{statusMessage}</p>
+                </div>
+              )}
               <div className="game-panel deck-status-panel">
                 <div className="board-header">
                   <h3>Deck</h3>

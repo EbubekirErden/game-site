@@ -2,6 +2,9 @@
   "name": "@game-site/server",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts"
+  },
   "dependencies": {
     "@game-site/shared": "file:../../packages/shared",
     "socket.io": "^4.8.0"

@@ -6,12 +6,18 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "concurrently \"npm run dev -w apps/server\" \"npm run dev -w apps/web\"",
     "typecheck": "tsc -b packages/shared apps/server apps/web",
     "test": "npm run typecheck && node --test packages/shared/dist/**/*.test.js"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
-    "typescript": "^5.9.0"
+    "@types/react-dom": "^19.0.0",
+    "concurrently": "^9.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
   }
 }

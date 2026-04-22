@@ -2,7 +2,7 @@ import React from "react";
 import { Navigate, Route, Routes, matchPath, useLocation, useNavigate } from "react-router-dom";
 
 import { getCardDef } from "@game-site/shared";
-import type { CardInstance, PlayerID, PlayerViewState } from "@game-site/shared";
+import type { CardID, CardInstance, PlayerID, PlayerViewState } from "@game-site/shared";
 
 import { formatErrorReason } from "../lib/gamePresentation.js";
 import { socket } from "../lib/socket.js";
@@ -23,14 +23,25 @@ type PersistedSession = {
   roomId: string | null;
 };
 
-function formatPrivateNote(note: ActionNote): string {
+type PrivateNote = {
+  text: string;
+  cardId: CardID | null;
+};
+
+function formatPrivateNote(note: ActionNote): PrivateNote {
   if (note.type === "peek") {
-    return note.seenCard ? `You saw ${getCardDef(note.seenCard.cardId).name}.` : "You looked but saw no card.";
+    return {
+      text: note.seenCard ? `You saw ${getCardDef(note.seenCard.cardId).name}.` : "You looked but saw no card.",
+      cardId: note.seenCard?.cardId ?? null,
+    };
   }
 
   const playerCard = note.playerCard ? getCardDef(note.playerCard.cardId).name : "nothing";
   const targetCard = note.targetCard ? getCardDef(note.targetCard.cardId).name : "nothing";
-  return `Comparison result: you had ${playerCard}, they had ${targetCard}.`;
+  return {
+    text: `Comparison result: you had ${playerCard}, they had ${targetCard}.`,
+    cardId: note.targetCard?.cardId ?? note.playerCard?.cardId ?? null,
+  };
 }
 
 const GAMES = [
@@ -135,7 +146,7 @@ export function App() {
   const [state, setState] = React.useState<PlayerViewState | null>(null);
   const [pendingAction, setPendingAction] = React.useState<"create" | "join" | null>(null);
   const [message, setMessage] = React.useState("Enter your name, then create or join a room.");
-  const [lastNote, setLastNote] = React.useState("");
+  const [lastNote, setLastNote] = React.useState<PrivateNote | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = React.useState<string | null>(null);
   const [targetPlayerId, setTargetPlayerId] = React.useState("");
   const [guessedValue, setGuessedValue] = React.useState("2");
@@ -342,7 +353,7 @@ export function App() {
   function handleStartRound() {
     if (!state) return;
 
-    setLastNote("");
+    setLastNote(null);
     socket.emit("round:start", { roomId: state.roomId });
   }
 
@@ -378,7 +389,7 @@ export function App() {
             return;
           }
 
-          setLastNote("");
+          setLastNote(null);
           setMessage(`Played ${selectedCardDef.name}.`);
           setSelectedInstanceId(null);
           setTargetPlayerId("");
@@ -396,7 +407,7 @@ export function App() {
     setState(null);
     setSavedRoomId(null);
     setPendingAction(null);
-    setLastNote("");
+    setLastNote(null);
     setSelectedInstanceId(null);
     setTargetPlayerId("");
     setGuessedValue("2");

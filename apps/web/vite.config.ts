@@ -11,5 +11,6 @@ export default defineConfig({
         ws: true,
       },
     },
+    allowedHosts:["tapestry-rounding-defeat.ngrok-free.dev"]
   },
 });

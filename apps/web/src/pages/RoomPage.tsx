@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { getCardDef } from "@game-site/shared";
-import type { PlayerViewState } from "@game-site/shared";
+import type { CardID, PlayerViewState } from "@game-site/shared";
 
 import { ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
@@ -25,7 +25,10 @@ type RoomPageProps = {
   state: PlayerViewState;
   gameTitle: string;
   message: string;
-  lastNote: string;
+  lastNote: {
+    text: string;
+    cardId: CardID | null;
+  } | null;
   selectedInstanceId: string | null;
   targetPlayerId: string;
   guessedValue: string;
@@ -58,6 +61,7 @@ export function RoomPage({
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
   const [dismissedNote, setDismissedNote] = React.useState<string | null>(null);
+  const [noteTurnNumber, setNoteTurnNumber] = React.useState<number | null>(null);
   const [copied, setCopied] = React.useState(false); // Copy button state
 
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
@@ -100,7 +104,18 @@ export function RoomPage({
 
   React.useEffect(() => {
     setDismissedNote(null);
+    setNoteTurnNumber(lastNote ? (state.round?.turnNumber ?? null) : null);
   }, [lastNote]);
+
+  React.useEffect(() => {
+    if (!lastNote || dismissedNote === lastNote.text) return;
+    if (state.phase !== "in_round") return;
+    if (state.round?.currentPlayerId !== state.selfPlayerId) return;
+    if (noteTurnNumber === null) return;
+    if (state.round.turnNumber <= noteTurnNumber) return;
+
+    setDismissedNote(lastNote.text);
+  }, [dismissedNote, lastNote, noteTurnNumber, state.phase, state.round?.currentPlayerId, state.round?.turnNumber, state.selfPlayerId]);
 
   const handleInitiatePlay = async () => {
     if (targetNeeded || guessNeeded) {
@@ -127,13 +142,7 @@ export function RoomPage({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const privateNoteCardId = React.useMemo(() => {
-    if (!lastNote) return null;
-    const match = lastNote.match(/(Guard|Priest|Baron|Handmaid|Prince|King|Countess|Princess|Assassin|Jester|Bishop|Sycophant|Constable|Count)/i);
-    return match ? match[1].toLowerCase() : null;
-  }, [lastNote]);
-
-  const showPrivateNote = lastNote && dismissedNote !== lastNote;
+  const activePrivateNote = lastNote && dismissedNote !== lastNote.text ? lastNote : null;
 
   const targetOptions = React.useMemo(() => {
     if (!self || !selectedCardDef || !state.players) return [];
@@ -288,18 +297,18 @@ export function RoomPage({
             </section>
           )}
 
-          {showPrivateNote && (
+          {activePrivateNote && (
             <section className="game-panel alert-panel">
               <div className="alert-header">
                 <h3>Result / Info</h3>
-                <button type="button" className="dismiss-btn" onClick={() => setDismissedNote(lastNote)} aria-label="Dismiss note">
+                <button type="button" className="dismiss-btn" onClick={() => setDismissedNote(activePrivateNote.text)} aria-label="Dismiss note">
                   <X size={16} strokeWidth={2.3} aria-hidden="true" />
                 </button>
               </div>
-              <p>{lastNote}</p>
-              {privateNoteCardId && (
+              <p>{activePrivateNote.text}</p>
+              {activePrivateNote.cardId && (
                 <div className="private-card-showcase">
-                  <CardView card={{ instanceId: "temp", cardId: privateNoteCardId as any }} compact />
+                  <CardView card={{ instanceId: "temp", cardId: activePrivateNote.cardId }} compact />
                 </div>
               )}
             </section>

@@ -1,3 +1,5 @@
+import React from "react";
+
 type HomePageProps = {
   games: Array<{
     id: string;
@@ -30,66 +32,86 @@ export function HomePage({
   onCreateRoom,
   onJoinRoom,
 }: HomePageProps) {
-  return (
-    <main className="home-shell">
-      <section className="home-card home-card-wide">
-        <div className="home-header">
-          <h1>Game Hub</h1>
-          <p>Choose a game first, then create a room or join with a room code.</p>
-        </div>
+  const activeGame = games.find((g) => g.id === selectedGame);
 
-        <section className="game-picker">
+  return (
+    <main className="hub-layout">
+      {/* Sidebar for Game Selection */}
+      <aside className="hub-sidebar">
+        <div className="hub-sidebar-header">
+          <h1>Game Hub</h1>
+        </div>
+        <nav className="game-list">
           {games.map((game) => (
             <button
               key={game.id}
               type="button"
-              className={`game-card${selectedGame === game.id ? " is-selected" : ""}${!game.available ? " is-disabled" : ""}`}
+              className={`game-list-item ${selectedGame === game.id ? "is-selected" : ""} ${!game.available ? "is-disabled" : ""}`}
               onClick={() => game.available && onSelectGame(game.id)}
               disabled={!game.available}
             >
               <strong>{game.title}</strong>
-              <span>{game.description}</span>
             </button>
           ))}
-        </section>
+        </nav>
+      </aside>
 
-        {selectedGame ? (
-          <section className="setup-panel">
-            <div className="setup-header">
-              <h2>{selectedGame === "love-letter" ? "Love Letter" : "Selected game"}</h2>
-              <p>Create a room or join an existing one for this game.</p>
+      {/* Main Stage for Actions */}
+      <section className="hub-main">
+        {activeGame ? (
+          <div className="hub-action-stage">
+            <header className="stage-header">
+              <h2>{activeGame.title}</h2>
+              <p>{activeGame.description}</p>
+            </header>
+
+            <div className="player-setup">
+              <label>
+                Display name
+                <input 
+                  value={playerName} 
+                  onChange={(event) => onPlayerNameChange(event.target.value)} 
+                  placeholder="Enter your name to join the table..." 
+                />
+              </label>
             </div>
 
-            <label>
-              Display name
-              <input value={playerName} onChange={(event) => onPlayerNameChange(event.target.value)} placeholder="Your name" />
-            </label>
-
-            <div className="setup-stack">
-              <section className="action-card">
-                <h3>Create room</h3>
-                <p>A room code is generated automatically when you create one.</p>
-                <button type="button" className="primary-button" onClick={onCreateRoom} disabled={pendingAction !== null}>
-                  {pendingAction === "create" ? "Creating..." : "Create room"}
+            <div className="action-split">
+              <div className="action-card">
+                <h3>Host a Game</h3>
+                <p>Create a new room and invite others.</p>
+                <button type="button" className="primary-button" onClick={onCreateRoom} disabled={pendingAction !== null || !playerName}>
+                  {pendingAction === "create" ? "Creating..." : "Create Room"}
                 </button>
-              </section>
+              </div>
 
-              <section className="action-card">
-                <h3>Join room</h3>
-                <p>Enter the room code shared by the host.</p>
+              <div className="action-divider"><span>OR</span></div>
+
+              <div className="action-card">
+                <h3>Join a Game</h3>
+                <p>Enter a code shared by the host.</p>
                 <label>
-                  Room code
-                  <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="AB12CD" />
+                  <input 
+                    value={joinCode} 
+                    onChange={(event) => onJoinCodeChange(event.target.value)} 
+                    placeholder="Room Code (e.g. AB12CD)" 
+                  />
                 </label>
-                <button type="button" className="secondary-button action-button" onClick={onJoinRoom} disabled={pendingAction !== null}>
-                  {pendingAction === "join" ? "Joining..." : "Join room"}
+                <button type="button" className="secondary-button action-button" onClick={onJoinRoom} disabled={pendingAction !== null || !playerName || !joinCode}>
+                  {pendingAction === "join" ? "Joining..." : "Join Room"}
                 </button>
-              </section>
+              </div>
             </div>
-          </section>
-        ) : null}
-
-        <p className="helper-text">{message}</p>
+            
+            {message && <p className="helper-text error-text">{message}</p>}
+          </div>
+        ) : (
+          <div className="hub-empty-state">
+            <div className="empty-icon">🎲</div>
+            <h2>Select a game</h2>
+            <p>Choose a game from the sidebar to start playing.</p>
+          </div>
+        )}
       </section>
     </main>
   );

@@ -64,9 +64,7 @@ export function RoomPage({
 
     if (selectedCardDef.id === "prince") {
       const otherOptions = state.players.filter((player) => player.id !== self.id && player.status === "active" && !player.protectedUntilNextTurn);
-      if (otherOptions.length === 0) {
-        return [self];
-      }
+      if (otherOptions.length === 0) return [self];
       return [self, ...otherOptions];
     }
 
@@ -74,254 +72,172 @@ export function RoomPage({
       return state.players.filter((player) => player.id !== self.id && player.status === "active" && !player.protectedUntilNextTurn);
     }
 
-    if (selectedCardDef.targetRule === "self") {
-      return [self];
-    }
-
+    if (selectedCardDef.targetRule === "self") return [self];
     return [];
   }, [selectedCardDef, self, state.players]);
 
   return (
-    <main className="room-shell">
-      <section className="room-topbar">
-        <div>
+    <main className="table-layout">
+      {/* Top Navigation Bar */}
+      <header className="table-topbar">
+        <div className="topbar-info">
           <h1>{gameTitle}</h1>
-          <p>{showLobby ? "Waiting room" : state.phase.replaceAll("_", " ")}</p>
+          <span className="phase-badge">{showLobby ? "Waiting Room" : state.phase.replaceAll("_", " ")}</span>
+          <span className="room-code-badge">Room: {state.roomId}</span>
         </div>
-        <div className="topbar-chips">
-          <button type="button" className="secondary-button topbar-button" onClick={onLeaveRoom}>
-            Leave room
-          </button>
-          <button type="button" className="secondary-button topbar-button" onClick={onBackToGames}>
-            Back to games
-          </button>
-          {showLobby ? <span className="status-pill">{readyCount}/{playerCount} ready</span> : null}
-          {state.phase === "in_round" ? <span className={`status-pill${isMyTurn ? " is-active" : ""}`}>{isMyTurn ? "Your turn" : "Waiting"}</span> : null}
-          <span className="status-pill">Room {state.roomId}</span>
+        <div className="topbar-actions">
+          {state.phase === "in_round" && (
+            <span className={`turn-indicator ${isMyTurn ? "is-my-turn" : ""}`}>
+              {isMyTurn ? "Your Turn" : "Waiting for others..."}
+            </span>
+          )}
+          <button type="button" className="secondary-button" onClick={onLeaveRoom}>Leave</button>
         </div>
-      </section>
+      </header>
 
-      <div className="room-layout">
-        <aside className="panel room-sidebar">
-          <section className="sidebar-section">
-            <h2>Room code</h2>
-            <div className="room-code-box">{state.roomId}</div>
-            <p className="helper-text">Share this code so another player can join.</p>
-          </section>
-
-          <section className="sidebar-section">
-            <h3>Your status</h3>
-            {showLobby ? (
-              <button
-                type="button"
-                className={`ready-toggle${self?.isReady ? " is-ready" : ""}`}
-                aria-pressed={self?.isReady ?? false}
-                onClick={() => onToggleReady(!self?.isReady)}
-              >
-                <span className="ready-toggle-track">
-                  <span className="ready-toggle-thumb" />
-                </span>
-                <span className="ready-toggle-label">{self?.isReady ? "Ready" : "Not ready"}</span>
-              </button>
-            ) : (
-              <span className={`ready-pill${self?.isReady ? " is-ready" : ""}`}>{self?.isReady ? "Ready" : "Not ready"}</span>
-            )}
-          </section>
-
-          <section className="sidebar-section">
+      {/* 3-Column Workspace */}
+      <div className="table-workspace">
+        
+        {/* LEFT COLUMN: Players & Status */}
+        <aside className="table-sidebar table-left-sidebar">
+          <section className="game-panel slim-panel">
             <h3>Players</h3>
-            <div className="player-list">
+            <div className="player-list-slim">
               {state.players.map((player) => (
-                <div key={player.id} className={`player-list-item${player.id === state.selfPlayerId ? " is-self" : ""}`}>
-                  <div>
-                    <strong>{player.name}</strong>
-                    <p>{player.id === state.creatorId ? "Creator" : "Player"}</p>
+                <div key={player.id} className={`player-row ${player.id === state.selfPlayerId ? "is-self" : ""} ${player.status !== "active" ? "is-eliminated" : ""}`}>
+                  <div className="player-row-info">
+                    <strong>{player.name} {player.id === state.creatorId && "👑"}</strong>
+                    <span className="player-status-text">
+                      {player.status} {player.protectedUntilNextTurn && "🛡️"}
+                    </span>
                   </div>
-                  <span className={`ready-pill${player.isReady ? " is-ready" : ""}`}>{player.isReady ? "Ready" : "Not ready"}</span>
+                  {/* ONLY show ready states if in the lobby */}
+                  {showLobby && (
+                    <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} />
+                  )}
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="sidebar-section">
-            <h3>Activity</h3>
-            <ActivityFeed events={state.log} state={state} />
-          </section>
-
-          {lastNote ? (
-            <section className="sidebar-section">
-              <h3>Private info</h3>
-              <p className="note-box">{lastNote}</p>
+          {showLobby && (
+            <section className="game-panel slim-panel">
+              <h3>Your Status</h3>
+              <button
+                type="button"
+                className={`primary-button full-width ${self?.isReady ? "is-ready-btn" : ""}`}
+                onClick={() => onToggleReady(!self?.isReady)}
+              >
+                {self?.isReady ? "Ready to Start!" : "Click when Ready"}
+              </button>
+              
+              {isCreator && (
+                <button type="button" className="secondary-button full-width mt-2" onClick={onStartRound} disabled={!allReady}>
+                  {allReady ? "Start Game" : "Waiting for players..."}
+                </button>
+              )}
             </section>
-          ) : null}
+          )}
         </aside>
 
-        <div className="room-main">
+        {/* CENTER COLUMN: The Board */}
+        <section className="table-center">
           {showLobby ? (
-            <section className="panel lobby-board">
-              <div className="section-header">
-                <div>
-                  <h2>Table</h2>
-                  <p className="muted">Need at least 2 players. Everyone must be ready before the creator can start.</p>
-                </div>
-                {isCreator ? (
-                  <button type="button" className="primary-button" onClick={onStartRound} disabled={!allReady}>
-                    Start game
-                  </button>
-                ) : (
-                  <span className="status-pill">Waiting for creator</span>
-                )}
+            <div className="game-panel center-lobby">
+              <h2>Waiting for players...</h2>
+              <p>Need at least 2 players. Everyone must be ready to start.</p>
+              <div className="lobby-stats">
+                <div className="stat-box"><strong>{playerCount}</strong><span>Players</span></div>
+                <div className="stat-box"><strong>{readyCount}</strong><span>Ready</span></div>
               </div>
-
-              <div className="lobby-summary-grid">
-                <div className="summary-card">
-                  <span>Players</span>
-                  <strong>{playerCount}</strong>
-                  <p>Minimum 2</p>
-                </div>
-                <div className="summary-card">
-                  <span>Ready</span>
-                  <strong>{readyCount}</strong>
-                  <p>{allReady ? "All set" : "Waiting on players"}</p>
-                </div>
-                <div className="summary-card">
-                  <span>Deck</span>
-                  <strong>16</strong>
-                  <p>Classic Love Letter</p>
-                </div>
-              </div>
-
-              <p className="helper-text">{message}</p>
-            </section>
+              <p className="error-text">{message}</p>
+            </div>
           ) : (
             <>
-              <section className="panel board-panel">
-                <div className="section-header">
-                  <div>
-                    <h2>Table</h2>
-                    <p className="muted">Players, discard piles, and round state.</p>
-                  </div>
-                  <div className="table-meta">
-                    <span className="status-pill">Deck {state.round?.deckCount ?? 0}</span>
-                    <span className="status-pill">Turn {state.round?.turnNumber ?? 0}</span>
-                  </div>
+              {/* Other Players' Discards / Table Area */}
+              <div className="game-panel board-area">
+                <div className="board-header">
+                  <h3>Table</h3>
+                  <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
                 </div>
-
-                <div className="players-grid">
+                
+                <div className="opponent-grid">
                   {state.players.map((player) => (
-                    <article key={player.id} className={`player-tile${player.id === state.selfPlayerId ? " is-self" : ""}`}>
-                      <div className="player-heading">
-                        <div>
-                          <strong>{player.name}</strong>
-                          <p>
-                            {player.status}
-                            {player.protectedUntilNextTurn ? " • protected" : ""}
-                          </p>
-                        </div>
-                        <span className="token-badge">{player.tokens} token{player.tokens === 1 ? "" : "s"}</span>
+                    <div key={player.id} className={`opponent-zone ${player.id === state.selfPlayerId ? "hidden" : ""}`}>
+                      <div className="opponent-name">
+                        {player.name} 
+                        <span className="token-count">🪙 {player.tokens}</span>
                       </div>
-                      <p className="muted small-copy">Hand {player.handCount}</p>
-                      <div className="discard-row">
-                        {player.discardPile.length === 0 ? <span className="empty-label">No discards</span> : null}
+                      <div className="discard-spread">
+                        {player.discardPile.length === 0 ? <span className="muted-text">No discards</span> : null}
                         {player.discardPile.map((card) => (
                           <CardView key={card.instanceId} card={card} compact />
                         ))}
                       </div>
-                    </article>
+                    </div>
                   ))}
                 </div>
 
-              {state.round?.visibleRemovedCards.length ? (
-                <div className="removed-section">
-                  <h3>2-player setup cards</h3>
-                  <p className="muted">In 2-player Love Letter, three cards are revealed and removed from the round.</p>
-                  <div className="discard-row">
-                    {state.round.visibleRemovedCards.map((card) => (
-                      <CardView key={card.instanceId} card={card} compact />
-                      ))}
-                    </div>
+                {state.roundWinnerIds.length > 0 && (
+                  <div className="winner-banner">
+                    🏆 Round winner: {state.roundWinnerIds.map((id) => playerNameById(state, id)).join(", ")}
                   </div>
-                ) : null}
+                )}
+              </div>
 
-                {state.roundWinnerIds.length ? (
-                  <div className="round-banner">
-                    Round winner: {state.roundWinnerIds.map((playerId) => playerNameById(state, playerId)).join(", ")}
-                  </div>
-                ) : null}
-              </section>
-
-              <section className="panel hand-panel">
-                <div className="section-header">
-                  <div>
-                    <h2>Play area</h2>
-                    <p className="muted">{isMyTurn ? "Bring a card to the middle, choose any target, then play it." : "Waiting for your turn."}</p>
-                  </div>
-                  {isCreator && state.phase === "round_over" ? (
-                    <button type="button" className="secondary-button" onClick={onStartRound}>
-                      Start next round
-                    </button>
-                  ) : null}
+              {/* Your Play Area & Hand */}
+              <div className="game-panel player-area">
+                <div className="player-area-header">
+                  <h3>Your Hand</h3>
+                  <div className="token-count">🪙 Tokens: {self?.tokens || 0}</div>
                 </div>
 
-                <div className="play-stage">
-                  <div className="play-stage-card">
+                {/* The Stage (where you select a card and choose targets) */}
+                <div className="play-stage-horizontal">
+                  <div className="stage-card-slot">
                     {selectedCard ? (
                       <CardView card={selectedCard} spotlight />
                     ) : (
-                      <div className="card-stage-placeholder">Select a card from your hand to inspect it here.</div>
+                      <div className="empty-slot">Select a card</div>
                     )}
                   </div>
 
-                  <div className="play-stage-controls">
-                    <div className="action-summary">
-                      <h3>Selected card</h3>
-                      <p className="muted">{selectedCardDef ? `${selectedCardDef.name} (${selectedCardDef.value})` : "Nothing selected yet."}</p>
-                    </div>
+                  <div className="stage-actions">
+                    {targetNeeded && (
+                      <label className="dark-label">
+                        Target Player
+                        <select className="dark-select" value={targetPlayerId} onChange={(e) => onTargetPlayerChange(e.target.value)}>
+                          <option value="">-- Choose Target --</option>
+                          {targetablePlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </label>
+                    )}
 
-                    <div className="action-controls">
-                      {targetNeeded ? (
-                        <label>
-                          Target
-                          <select value={targetPlayerId} onChange={(event) => onTargetPlayerChange(event.target.value)}>
-                            {targetablePlayers.map((player) => (
-                              <option key={player.id} value={player.id}>
-                                {player.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : null}
+                    {guessNeeded && (
+                      <label className="dark-label">
+                        Guard Guess
+                        <select className="dark-select" value={guessedValue} onChange={(e) => onGuessedValueChange(e.target.value)}>
+                          <option value="">-- Guess Card --</option>
+                          {[2, 3, 4, 5, 6, 7, 8].map((val) => (
+                            <option key={val} value={val}>{val} - {getCardDef(cardIdByValue(val)).name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
 
-                      {guessNeeded ? (
-                        <label>
-                          Guard guess
-                          <select value={guessedValue} onChange={(event) => onGuessedValueChange(event.target.value)}>
-                            {[2, 3, 4, 5, 6, 7, 8].map((value) => (
-                              <option key={value} value={value}>
-                                {value} • {getCardDef(cardIdByValue(value)).name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        className="primary-button play-action-button"
-                        disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId) || (guessNeeded && !guessedValue)}
-                        onClick={onPlayCard}
-                      >
-                        Play card
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="primary-button play-btn"
+                      disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId) || (guessNeeded && !guessedValue)}
+                      onClick={onPlayCard}
+                    >
+                      Play Card
+                    </button>
                   </div>
                 </div>
 
-                <div className="hand-dock">
-                  <div className="hand-dock-header">
-                    <h3>Your hand</h3>
-                    <p className="muted">Cards rest here until you bring one to the play area.</p>
-                  </div>
+                {/* Hand Dock */}
+                <div className="hand-dock-horizontal">
                   {self?.hand.map((card) => (
                     <CardView
                       key={card.instanceId}
@@ -331,14 +247,27 @@ export function RoomPage({
                       onClick={isMyTurn ? () => onSelectCard(card.instanceId) : undefined}
                     />
                   ))}
-                  {!self?.hand.length ? <span className="empty-label">No hand available.</span> : null}
                 </div>
-
-                <p className="helper-text">{message}</p>
-              </section>
+              </div>
             </>
           )}
-        </div>
+        </section>
+
+        {/* RIGHT COLUMN: Activity & Info */}
+        <aside className="table-sidebar table-right-sidebar">
+          {lastNote && (
+            <section className="game-panel alert-panel">
+              <h3>Private Info</h3>
+              <p>{lastNote}</p>
+            </section>
+          )}
+
+          <section className="game-panel activity-panel">
+            <h3>Activity Log</h3>
+            <ActivityFeed events={state.log} state={state} />
+          </section>
+        </aside>
+
       </div>
     </main>
   );

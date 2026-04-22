@@ -20,7 +20,7 @@ type RoomPageProps = {
   onGuessedValueChange: (value: string) => void;
   onToggleReady: (isReady: boolean) => void;
   onStartRound: () => void;
-  onPlayCard: () => void;
+  onPlayCard: () => Promise<boolean>;
   onLeaveRoom: () => void;
   onBackToGames: () => void;
 };
@@ -67,24 +67,28 @@ export function RoomPage({
     selectedCardDef?.id === "king" ||
     selectedCardDef?.id === "prince";
 
-  // Combine all discards into a single pool
-  const allDiscards = React.useMemo(() => {
-    return state.players?.flatMap(p => p.discardPile || []) || [];
-  }, [state.players]);
-
   React.useEffect(() => {
     if (!isMyTurn) setPlayStage("select_card");
     setDismissedNote(null);
   }, [isMyTurn, state.round?.turnNumber, state.phase]);
 
-  const handleInitiatePlay = () => {
-    if (targetNeeded || guessNeeded) setPlayStage("setup_action");
-    else { onPlayCard(); setPlayStage("select_card"); }
+  const handleInitiatePlay = async () => {
+    if (targetNeeded || guessNeeded) {
+      setPlayStage("setup_action");
+      return;
+    }
+
+    const didPlay = await onPlayCard();
+    if (didPlay) {
+      setPlayStage("select_card");
+    }
   };
 
-  const handleConfirmPlay = () => {
-    onPlayCard();
-    setPlayStage("select_card");
+  const handleConfirmPlay = async () => {
+    const didPlay = await onPlayCard();
+    if (didPlay) {
+      setPlayStage("select_card");
+    }
   };
 
   const handleCopyCode = () => {
@@ -101,20 +105,56 @@ export function RoomPage({
 
   const showPrivateNote = lastNote && dismissedNote !== lastNote;
 
-  const targetablePlayers = React.useMemo(() => {
+  const targetOptions = React.useMemo(() => {
     if (!self || !selectedCardDef || !state.players) return [];
 
     if (selectedCardDef.id === "prince") {
-      const otherOptions = state.players.filter((player) => player.id !== self.id && player.status === "active" && !player.protectedUntilNextTurn);
-      if (otherOptions.length === 0) return [self];
-      return [self, ...otherOptions];
+      return state.players
+        .filter((player) => player.status === "active")
+        .map((player) => ({
+          player,
+          selectable: player.id === self.id || !player.protectedUntilNextTurn,
+          protectedByHandmaid: player.id !== self.id && player.protectedUntilNextTurn,
+        }));
     }
+
     if (selectedCardDef.targetRule === "single_other_non_protected") {
-      return state.players.filter((player) => player.id !== self.id && player.status === "active" && !player.protectedUntilNextTurn);
+      return state.players
+        .filter((player) => player.id !== self.id && player.status === "active")
+        .map((player) => ({
+          player,
+          selectable: !player.protectedUntilNextTurn,
+          protectedByHandmaid: player.protectedUntilNextTurn,
+        }));
     }
-    if (selectedCardDef.targetRule === "self") return [self];
+
+    if (selectedCardDef.targetRule === "self") {
+      return [{
+        player: self,
+        selectable: true,
+        protectedByHandmaid: false,
+      }];
+    }
+
     return [];
   }, [selectedCardDef, self, state.players]);
+
+  const hasSelectableTarget = targetOptions.some((option) => option.selectable);
+  const canPlayWithoutTarget = Boolean(
+    selectedCardDef &&
+    targetNeeded &&
+    selectedCardDef.id !== "prince" &&
+    !hasSelectableTarget,
+  );
+
+  React.useEffect(() => {
+    if (!targetPlayerId) return;
+
+    const selectedTargetStillValid = targetOptions.some((option) => option.player.id === targetPlayerId && option.selectable);
+    if (!selectedTargetStillValid) {
+      onTargetPlayerChange("");
+    }
+  }, [onTargetPlayerChange, targetOptions, targetPlayerId]);
 
   return (
     <main className="table-layout">
@@ -383,21 +423,30 @@ export function RoomPage({
                         {targetNeeded && (
                           <div className="selection-group">
                             <label className="dark-label">1. Choose a Target</label>
+                            {!hasSelectableTarget && (
+                              <p className="muted-text">
+                                All available opponents are protected by Handmaid, so this card will be played without effect.
+                              </p>
+                            )}
                             <div className="selection-grid">
-                              {targetablePlayers.map(p => (
+                              {targetOptions.map(({ player, selectable, protectedByHandmaid }) => (
                                 <button 
-                                  key={p.id} 
-                                  className={`grid-btn ${targetPlayerId === p.id ? 'selected' : ''}`}
-                                  onClick={() => onTargetPlayerChange(p.id)}
+                                  key={player.id} 
+                                  type="button"
+                                  className={`grid-btn ${targetPlayerId === player.id ? "selected" : ""} ${!selectable ? "is-disabled" : ""}`}
+                                  onClick={() => selectable && onTargetPlayerChange(player.id)}
+                                  disabled={!selectable}
+                                  title={protectedByHandmaid ? `${player.name} is protected by Handmaid.` : undefined}
                                 >
-                                  {p.name}
+                                  <span>{player.name}</span>
+                                  {protectedByHandmaid && <span className="grid-btn-note">Protected</span>}
                                 </button>
                               ))}
                             </div>
                           </div>
                         )}
 
-                        {guessNeeded && (
+                        {guessNeeded && hasSelectableTarget && (
                           <div className="selection-group">
                             <label className="dark-label">2. Guess their Card</label>
                             <div className="selection-grid">
@@ -418,7 +467,7 @@ export function RoomPage({
                         <button
                           type="button"
                           className="primary-button play-btn"
-                          disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId) || (guessNeeded && !guessedValue)}
+                          disabled={!isMyTurn || !selectedCard || (targetNeeded && !targetPlayerId && !canPlayWithoutTarget) || (guessNeeded && hasSelectableTarget && !guessedValue)}
                           onClick={handleConfirmPlay}
                         >
                           Confirm & Play

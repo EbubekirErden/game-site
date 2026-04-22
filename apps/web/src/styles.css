@@ -738,6 +738,26 @@ input::placeholder {
   box-shadow: 0 0 16px rgba(31, 111, 235, 0.3);
 }
 
+.grid-btn.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-style: dashed;
+  transform: none;
+}
+
+.grid-btn.is-disabled:hover {
+  border-color: #3d4c5f;
+  background: rgba(15, 20, 26, 0.8);
+  transform: none;
+}
+
+.grid-btn-note {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .guess-val {
   font-size: 1.6rem;
   font-weight: 900;

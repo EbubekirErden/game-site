@@ -346,12 +346,12 @@ export function App() {
     socket.emit("round:start", { roomId: state.roomId });
   }
 
-  function handlePlayCard() {
-    if (!state) return;
+  function handlePlayCard(): Promise<boolean> {
+    if (!state) return Promise.resolve(false);
 
     const self = state.players.find((player) => player.id === state.selfPlayerId);
     const selectedCard = self?.hand.find((card) => card.instanceId === selectedInstanceId);
-    if (!selectedCard) return;
+    if (!selectedCard) return Promise.resolve(false);
 
     const selectedCardDef = getCardDef(selectedCard.cardId);
     const targetNeeded =
@@ -362,24 +362,29 @@ export function App() {
       selectedCardDef.id === "prince";
     const guessNeeded = selectedCardDef.id === "guard";
 
-    socket.emit(
-      "card:play",
-      {
-        roomId: state.roomId,
-        instanceId: selectedCard.instanceId,
-        targetPlayerId: targetNeeded ? targetPlayerId : undefined,
-        guessedValue: guessNeeded ? Number(guessedValue) : undefined,
-      },
-      (response: { ok: boolean; reason?: string }) => {
-        if (!response.ok) {
-          setMessage(formatErrorReason(response.reason ?? "invalid_action"));
-          return;
-        }
+    return new Promise((resolve) => {
+      socket.emit(
+        "card:play",
+        {
+          roomId: state.roomId,
+          instanceId: selectedCard.instanceId,
+          targetPlayerId: targetNeeded ? targetPlayerId || undefined : undefined,
+          guessedValue: guessNeeded ? Number(guessedValue) : undefined,
+        },
+        (response: { ok: boolean; reason?: string }) => {
+          if (!response.ok) {
+            setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+            resolve(false);
+            return;
+          }
 
-        setMessage(`Played ${selectedCardDef.name}.`);
-        setSelectedInstanceId(null);
-      },
-    );
+          setMessage(`Played ${selectedCardDef.name}.`);
+          setSelectedInstanceId(null);
+          setTargetPlayerId("");
+          resolve(true);
+        },
+      );
+    });
   }
 
   function handleLeaveRoom(backToGames: boolean) {

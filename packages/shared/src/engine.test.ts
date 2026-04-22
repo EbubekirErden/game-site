@@ -95,6 +95,28 @@ test("handmaid protection blocks guard targeting", () => {
   assert.equal(result.reason, "invalid_target");
 });
 
+test("guard can be played without a target when all opponents are protected", () => {
+  let state = setupStartedGame(["Ava", "Ben"]);
+  state = setPlayerHand(state, "p1", [makeCard("guard", "guard-1"), makeCard("priest", "priest-1")]);
+  state = {
+    ...state,
+    players: state.players.map((player) =>
+      player.id === "p2"
+        ? {
+            ...player,
+            protectedUntilNextTurn: true,
+          }
+        : player,
+    ),
+  };
+
+  const result = playCardAction(state, "p1", "guard-1");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state?.phase, "in_round");
+  assert.equal(result.state?.players.find((player) => player.id === "p2")?.status, "active");
+});
+
 test("baron eliminates the lower hand", () => {
   let state = setupStartedGame(["Ava", "Ben", "Cara"]);
   state = setPlayerHand(state, "p1", [makeCard("baron", "baron-1"), makeCard("prince", "prince-1")]);

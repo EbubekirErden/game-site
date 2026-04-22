@@ -37,6 +37,10 @@ function activeOtherTargets(players: PlayerState[], playerId: PlayerID): PlayerS
   return players.filter((player) => player.id !== playerId && isTargetable(playerId, player));
 }
 
+function activeOtherPlayers(players: PlayerState[], playerId: PlayerID): PlayerState[] {
+  return players.filter((player) => player.id !== playerId && player.status === "active");
+}
+
 function eliminatePlayer(player: PlayerState, log: GameEvent[]): void {
   if (player.status === "eliminated") return;
   player.status = "eliminated";
@@ -74,32 +78,33 @@ export function validatePlayAction(state: GameState, action: Extract<ClientActio
   const hasPrinceOrKing = handDefs.some((card) => card.id === "prince" || card.id === "king");
   const playedCard = getCardDef(player.hand.find((card) => card.instanceId === action.instanceId)!.cardId);
   const target = action.targetPlayerId ? state.players.find((candidate) => candidate.id === action.targetPlayerId) : undefined;
+  const otherPlayers = activeOtherPlayers(state.players, player.id);
+  const legalOtherTargets = activeOtherTargets(state.players, player.id);
+  const requiresOtherTarget = playedCard.id === "guard" || playedCard.id === "priest" || playedCard.id === "baron" || playedCard.id === "king";
 
   if (hasCountess && hasPrinceOrKing && playedCard.id !== "countess") {
     return { ok: false, reason: "countess_must_be_played" };
   }
 
   if (playedCard.id === "guard") {
-    if (!action.targetPlayerId) {
+    if (!action.targetPlayerId && legalOtherTargets.length > 0) {
       return { ok: false, reason: "target_required" };
     }
 
-    if (!action.guessedValue || action.guessedValue === 1 || action.guessedValue < 2 || action.guessedValue > 8) {
+    if (action.targetPlayerId && (!action.guessedValue || action.guessedValue === 1 || action.guessedValue < 2 || action.guessedValue > 8)) {
       return { ok: false, reason: "invalid_guard_guess" };
     }
   }
 
-  if (playedCard.id === "priest" || playedCard.id === "baron" || playedCard.id === "king") {
-    if (!action.targetPlayerId) {
-      return { ok: false, reason: "target_required" };
-    }
-  }
-
-  if (playedCard.id === "prince" && !action.targetPlayerId) {
+  if (requiresOtherTarget && !action.targetPlayerId && legalOtherTargets.length > 0) {
     return { ok: false, reason: "target_required" };
   }
 
-  if ((playedCard.id === "guard" || playedCard.id === "priest" || playedCard.id === "baron" || playedCard.id === "king") && target) {
+  if (playedCard.id === "prince" && !action.targetPlayerId && otherPlayers.length > 0) {
+    return { ok: false, reason: "target_required" };
+  }
+
+  if (requiresOtherTarget && target) {
     if (target.id === player.id) {
       return { ok: false, reason: "cannot_target_self" };
     }
@@ -108,8 +113,10 @@ export function validatePlayAction(state: GameState, action: Extract<ClientActio
     }
   }
 
-  if (playedCard.id === "prince" && target && !isTargetable(player.id, target)) {
-    return { ok: false, reason: "invalid_target" };
+  if (playedCard.id === "prince" && target) {
+    if (!isTargetable(player.id, target)) {
+      return { ok: false, reason: "invalid_target" };
+    }
   }
 
   return { ok: true };

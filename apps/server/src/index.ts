@@ -115,9 +115,12 @@ io.on("connection", (socket) => {
     emitRoomState(roomId);
   });
 
-  socket.on("card:play", ({ roomId, instanceId, targetPlayerId, guessedValue }) => {
+  socket.on("card:play", ({ roomId, instanceId, targetPlayerId, guessedValue }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
     const game = rooms.get(roomId);
-    if (!game) return;
+    if (!game) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
 
     const result = playCardAction(game, socket.id, instanceId, {
       targetPlayerId,
@@ -126,11 +129,13 @@ io.on("connection", (socket) => {
 
     if (!result.ok || !result.state) {
       socket.emit("action:error", { reason: result.reason ?? "invalid_action" });
+      respond?.({ ok: false, reason: result.reason ?? "invalid_action" });
       return;
     }
 
     rooms.set(roomId, result.state);
     emitRoomState(roomId);
+    respond?.({ ok: true });
 
     for (const note of result.privateNotes ?? []) {
       io.to(note.playerId).emit("action:note", note);

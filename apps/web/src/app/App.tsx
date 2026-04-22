@@ -214,14 +214,24 @@ export function App() {
       selectedCardDef.id === "prince";
     const guessNeeded = selectedCardDef.id === "guard";
 
-    socket.emit("card:play", {
-      roomId: state.roomId,
-      instanceId: selectedCard.instanceId,
-      targetPlayerId: targetNeeded ? targetPlayerId : undefined,
-      guessedValue: guessNeeded ? Number(guessedValue) : undefined,
-    });
+    socket.emit(
+      "card:play",
+      {
+        roomId: state.roomId,
+        instanceId: selectedCard.instanceId,
+        targetPlayerId: targetNeeded ? targetPlayerId : undefined,
+        guessedValue: guessNeeded ? Number(guessedValue) : undefined,
+      },
+      (response: { ok: boolean; reason?: string }) => {
+        if (!response.ok) {
+          setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+          return;
+        }
 
-    setSelectedInstanceId(null);
+        setMessage(`Played ${selectedCardDef.name}.`);
+        setSelectedInstanceId(null);
+      },
+    );
   }
 
   function handleLeaveRoom(backToGames: boolean) {

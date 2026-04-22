@@ -28,6 +28,12 @@ export function formatErrorReason(reason: string): string {
       return "Only the room creator can start the game.";
     case "players_not_ready":
       return "You need at least 2 players, and everyone in the room must be ready.";
+    case "not_your_turn":
+      return "It is not your turn.";
+    case "player_not_active":
+      return "You are not active in the current round.";
+    case "card_not_in_hand":
+      return "That card is no longer in your hand.";
     case "countess_must_be_played":
       return "You must play the Countess when you are also holding the Prince or King.";
     case "invalid_target":

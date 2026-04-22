@@ -1,5 +1,5 @@
-import { getCardDef } from "@game-site/shared";
-import type { CardID, GameEvent, PlayerID, PlayerViewState } from "@game-site/shared";
+import { getCardsForMode, getCardDef } from "@game-site/shared";
+import type { CardID, GameEvent, LoveLetterMode, PlayerID, PlayerViewState } from "@game-site/shared";
 
 export function playerNameById(state: PlayerViewState, playerId: PlayerID): string {
   const activeName = state.players.find((player) => player.id === playerId)?.name;
@@ -14,19 +14,10 @@ export function playerNameById(state: PlayerViewState, playerId: PlayerID): stri
   return historicalName && "name" in historicalName ? historicalName.name : "Unknown player";
 }
 
-export function cardIdByValue(value: number): CardID {
-  const cardsByValue: Record<number, CardID> = {
-    1: "guard",
-    2: "priest",
-    3: "baron",
-    4: "handmaid",
-    5: "prince",
-    6: "king",
-    7: "countess",
-    8: "princess",
-  };
-
-  return cardsByValue[value] ?? "guard";
+export function cardNamesByValue(value: number, mode: LoveLetterMode): string[] {
+  return getCardsForMode(mode)
+    .filter((card) => card.value === value)
+    .map((card) => card.name);
 }
 
 export function formatErrorReason(reason: string): string {
@@ -60,7 +51,9 @@ export function formatErrorReason(reason: string): string {
     case "invalid_target":
       return "That target is not available for this card.";
     case "invalid_guard_guess":
-      return "Guard guesses must be a value between 2 and 8.";
+      return "Guard guesses must match a legal card value for the selected mode.";
+    case "invalid_bishop_guess":
+      return "Bishop guesses must be a value between 0 and 9.";
     default:
       return reason.replaceAll("_", " ");
   }
@@ -81,11 +74,13 @@ export function formatEvent(event: GameEvent, state: PlayerViewState): string {
     case "card_played":
       return `${playerNameById(state, event.playerId)} played ${getCardDef(event.cardId).name}.`;
     case "card_guessed":
-      return `${playerNameById(state, event.playerId)} guessed ${event.guessedValue} against ${playerNameById(state, event.targetPlayerId)}.`;
+      return `${playerNameById(state, event.playerId)} guessed ${event.guessedValue} with ${getCardDef(event.sourceCardId ?? "guard").name} against ${playerNameById(state, event.targetPlayerId)}.`;
     case "card_compared":
-      return `${playerNameById(state, event.playerId)} compared hands with ${playerNameById(state, event.targetPlayerId)}.`;
+      return `${playerNameById(state, event.playerId)} compared hands with ${playerNameById(state, event.targetPlayerId)} using ${getCardDef(event.sourceCardId ?? "baron").name}.`;
     case "card_swapped":
-      return `${playerNameById(state, event.playerId)} swapped hands with ${playerNameById(state, event.targetPlayerId)}.`;
+      return `${playerNameById(state, event.playerId)} swapped hands with ${playerNameById(state, event.targetPlayerId)} using ${getCardDef(event.sourceCardId ?? "king").name}.`;
+    case "card_seen":
+      return `${playerNameById(state, event.playerId)} privately inspected ${playerNameById(state, event.targetPlayerId)}'s hand.`;
     case "player_protected":
       return `${playerNameById(state, event.playerId)} is protected until their next turn.`;
     case "player_eliminated":
@@ -97,6 +92,6 @@ export function formatEvent(event: GameEvent, state: PlayerViewState): string {
     case "match_ended":
       return `Match ended. Winner: ${event.winnerIds.map((playerId) => playerNameById(state, playerId)).join(", ")}.`;
     default:
-      return event.type.replaceAll("_", " ");
+      return "";
   }
 }

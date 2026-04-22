@@ -2,7 +2,7 @@ import React from "react";
 import { Navigate, Route, Routes, matchPath, useLocation, useNavigate } from "react-router-dom";
 
 import { getCardDef } from "@game-site/shared";
-import type { CardID, CardInstance, PlayerID, PlayerViewState } from "@game-site/shared";
+import type { CardID, CardInstance, LoveLetterMode, PlayerID, PlayerViewState } from "@game-site/shared";
 
 import { formatErrorReason } from "../lib/gamePresentation.js";
 import { socket } from "../lib/socket.js";
@@ -14,33 +14,66 @@ const SESSION_STORAGE_KEY = "game-site:session";
 
 type ActionNote =
   | { type: "peek"; playerId: PlayerID; targetPlayerId: PlayerID; seenCard: CardInstance | null }
-  | { type: "compare"; playerId: PlayerID; targetPlayerId: PlayerID; playerCard: CardInstance | null; targetCard: CardInstance | null };
+  | { type: "compare"; playerId: PlayerID; targetPlayerId: PlayerID; playerCard: CardInstance | null; targetCard: CardInstance | null }
+  | { type: "multi_peek"; playerId: PlayerID; seen: Array<{ targetPlayerId: PlayerID; seenCard: CardInstance | null }> };
 
 type PersistedSession = {
   playerId: string;
   playerName: string;
   selectedGame: string | null;
+  selectedMode: LoveLetterMode;
   roomId: string | null;
 };
 
-type PrivateNote = {
-  text: string;
-  cardId: CardID | null;
-};
+type PrivateNote =
+  | {
+      kind: "peek";
+      text: string;
+      cardId: CardID | null;
+    }
+  | {
+      kind: "compare";
+      text: string;
+      ownCardId: CardID | null;
+      otherCardId: CardID | null;
+    }
+  | {
+      kind: "multi_peek";
+      text: string;
+      seen: Array<{
+        targetPlayerId: PlayerID;
+        cardId: CardID | null;
+      }>;
+    };
 
 function formatPrivateNote(note: ActionNote): PrivateNote {
   if (note.type === "peek") {
     return {
+      kind: "peek",
       text: note.seenCard ? `You saw ${getCardDef(note.seenCard.cardId).name}.` : "You looked but saw no card.",
       cardId: note.seenCard?.cardId ?? null,
+    };
+  }
+
+  if (note.type === "multi_peek") {
+    const seen = note.seen.map((entry) => ({
+      targetPlayerId: entry.targetPlayerId,
+      cardId: entry.seenCard?.cardId ?? null,
+    }));
+    return {
+      kind: "multi_peek",
+      text: seen.length === 1 ? "You looked at 1 hand." : `You looked at ${seen.length} hands.`,
+      seen,
     };
   }
 
   const playerCard = note.playerCard ? getCardDef(note.playerCard.cardId).name : "nothing";
   const targetCard = note.targetCard ? getCardDef(note.targetCard.cardId).name : "nothing";
   return {
-    text: `Comparison result: you had ${playerCard}, they had ${targetCard}.`,
-    cardId: note.targetCard?.cardId ?? note.playerCard?.cardId ?? null,
+    kind: "compare",
+    text: `Baron comparison: your card was ${playerCard}, and the opposing card was ${targetCard}.`,
+    ownCardId: note.playerCard?.cardId ?? null,
+    otherCardId: note.targetCard?.cardId ?? null,
   };
 }
 
@@ -73,6 +106,7 @@ function readPersistedSession(): PersistedSession {
       playerId: createPlayerId(),
       playerName: "",
       selectedGame: null,
+      selectedMode: "classic",
       roomId: null,
     };
   }
@@ -84,6 +118,7 @@ function readPersistedSession(): PersistedSession {
         playerId: createPlayerId(),
         playerName: "",
         selectedGame: null,
+        selectedMode: "classic",
         roomId: null,
       };
     }
@@ -93,6 +128,7 @@ function readPersistedSession(): PersistedSession {
       playerId: typeof parsed.playerId === "string" && parsed.playerId ? parsed.playerId : createPlayerId(),
       playerName: typeof parsed.playerName === "string" ? parsed.playerName : "",
       selectedGame: parsed.selectedGame === "love-letter" ? parsed.selectedGame : null,
+      selectedMode: parsed.selectedMode === "premium" ? "premium" : "classic",
       roomId: typeof parsed.roomId === "string" && parsed.roomId ? parsed.roomId : null,
     };
   } catch {
@@ -100,6 +136,7 @@ function readPersistedSession(): PersistedSession {
       playerId: createPlayerId(),
       playerName: "",
       selectedGame: null,
+      selectedMode: "classic",
       roomId: null,
     };
   }
@@ -140,6 +177,7 @@ export function App() {
   const initialSession = initialSessionRef.current;
   const playerIdRef = React.useRef(initialSession.playerId);
   const [selectedGame, setSelectedGame] = React.useState<string | null>(() => (routeGameId === "love-letter" ? "love-letter" : initialSession.selectedGame));
+  const [selectedMode, setSelectedMode] = React.useState<LoveLetterMode>(initialSession.selectedMode);
   const [playerName, setPlayerName] = React.useState(initialSession.playerName);
   const [joinCode, setJoinCode] = React.useState(() => routeRoomId ?? initialSession.roomId ?? "");
   const [savedRoomId, setSavedRoomId] = React.useState<string | null>(initialSession.roomId);
@@ -148,7 +186,8 @@ export function App() {
   const [message, setMessage] = React.useState("Enter your name, then create or join a room.");
   const [lastNote, setLastNote] = React.useState<PrivateNote | null>(null);
   const [selectedInstanceId, setSelectedInstanceId] = React.useState<string | null>(null);
-  const [targetPlayerId, setTargetPlayerId] = React.useState("");
+  const [selectedTargetPlayerIds, setSelectedTargetPlayerIds] = React.useState<string[]>([]);
+  const [peekPlayerId, setPeekPlayerId] = React.useState("");
   const [guessedValue, setGuessedValue] = React.useState("2");
   const reconnectAttemptRef = React.useRef<string | null>(null);
 
@@ -189,9 +228,10 @@ export function App() {
       playerId: playerIdRef.current,
       playerName,
       selectedGame,
+      selectedMode,
       roomId: savedRoomId,
     });
-  }, [playerName, savedRoomId, selectedGame]);
+  }, [playerName, savedRoomId, selectedGame, selectedMode]);
 
   React.useEffect(() => {
     if (routeRoomId) {
@@ -203,6 +243,7 @@ export function App() {
     const onState = (nextState: PlayerViewState) => {
       setState(nextState);
       setSelectedGame("love-letter");
+      setSelectedMode(nextState.mode);
       setPendingAction(null);
       setJoinCode(nextState.roomId);
       setSavedRoomId(nextState.roomId);
@@ -290,7 +331,7 @@ export function App() {
 
     setPendingAction("create");
     setMessage("Creating room...");
-    socket.emit("room:create", { name: trimmedName, playerId: playerIdRef.current }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
+    socket.emit("room:create", { name: trimmedName, playerId: playerIdRef.current, mode: selectedMode }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
       if (!response.ok) {
         setPendingAction(null);
         setMessage(formatErrorReason(response.reason ?? "invalid_action"));
@@ -365,13 +406,23 @@ export function App() {
     if (!selectedCard) return Promise.resolve(false);
 
     const selectedCardDef = getCardDef(selectedCard.cardId);
-    const targetNeeded =
-      selectedCardDef.id === "guard" ||
-      selectedCardDef.id === "priest" ||
-      selectedCardDef.id === "baron" ||
-      selectedCardDef.id === "king" ||
-      selectedCardDef.id === "prince";
-    const guessNeeded = selectedCardDef.id === "guard";
+    const targetPlayerId = selectedTargetPlayerIds[0] ?? "";
+    const multiTargetIds =
+      selectedCardDef.id === "baroness" || selectedCardDef.id === "cardinal"
+        ? selectedTargetPlayerIds
+        : undefined;
+    const singleTargetNeeded = [
+      "guard",
+      "bishop",
+      "priest",
+      "baron",
+      "dowager_queen",
+      "king",
+      "prince",
+      "jester",
+      "sycophant",
+    ].includes(selectedCardDef.id);
+    const guessNeeded = selectedCardDef.id === "guard" || selectedCardDef.id === "bishop";
 
     return new Promise((resolve) => {
       socket.emit(
@@ -379,8 +430,10 @@ export function App() {
         {
           roomId: state.roomId,
           instanceId: selectedCard.instanceId,
-          targetPlayerId: targetNeeded ? targetPlayerId || undefined : undefined,
+          targetPlayerId: singleTargetNeeded ? targetPlayerId || undefined : undefined,
+          targetPlayerIds: multiTargetIds && multiTargetIds.length > 0 ? multiTargetIds : undefined,
           guessedValue: guessNeeded ? Number(guessedValue) : undefined,
+          peekPlayerId: selectedCardDef.id === "cardinal" ? peekPlayerId || undefined : undefined,
         },
         (response: { ok: boolean; reason?: string }) => {
           if (!response.ok) {
@@ -392,7 +445,8 @@ export function App() {
           setLastNote(null);
           setMessage(`Played ${selectedCardDef.name}.`);
           setSelectedInstanceId(null);
-          setTargetPlayerId("");
+          setSelectedTargetPlayerIds([]);
+          setPeekPlayerId("");
           resolve(true);
         },
       );
@@ -409,7 +463,8 @@ export function App() {
     setPendingAction(null);
     setLastNote(null);
     setSelectedInstanceId(null);
-    setTargetPlayerId("");
+    setSelectedTargetPlayerIds([]);
+    setPeekPlayerId("");
     setGuessedValue("2");
     reconnectAttemptRef.current = null;
     setMessage(backToGames ? "Choose a game to create or join a room." : "You left the room.");
@@ -430,11 +485,13 @@ export function App() {
           <HomePage
             games={GAMES}
             selectedGame={selectedGame}
+            selectedMode={selectedMode}
             playerName={playerName}
             joinCode={joinCode}
             pendingAction={pendingAction}
             message={message}
             onSelectGame={setSelectedGame}
+            onSelectMode={setSelectedMode}
             onPlayerNameChange={setPlayerName}
             onJoinCodeChange={setJoinCode}
             onCreateRoom={handleCreateRoom}
@@ -448,14 +505,22 @@ export function App() {
           state && routeRoomId === state.roomId ? (
             <RoomPage
               state={state}
-              gameTitle={selectedGame === "love-letter" ? "Love Letter" : "Game Room"}
+              gameTitle={
+                selectedGame === "love-letter"
+                  ? state.mode === "premium"
+                    ? "Love Letter Premium"
+                    : "Love Letter"
+                  : "Game Room"
+              }
               message={message}
               lastNote={lastNote}
               selectedInstanceId={selectedInstanceId}
-              targetPlayerId={targetPlayerId}
+              selectedTargetPlayerIds={selectedTargetPlayerIds}
+              peekPlayerId={peekPlayerId}
               guessedValue={guessedValue}
               onSelectCard={setSelectedInstanceId}
-              onTargetPlayerChange={setTargetPlayerId}
+              onTargetPlayerIdsChange={setSelectedTargetPlayerIds}
+              onPeekPlayerChange={setPeekPlayerId}
               onGuessedValueChange={setGuessedValue}
               onToggleReady={handleToggleReady}
               onStartRound={handleStartRound}

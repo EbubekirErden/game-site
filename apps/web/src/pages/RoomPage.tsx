@@ -19,21 +19,40 @@ import type { CardID, PlayerViewState } from "@game-site/shared";
 import { ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
-import { cardIdByValue, playerNameById } from "../lib/gamePresentation.js";
+import { cardNamesByValue, playerNameById } from "../lib/gamePresentation.js";
 
 type RoomPageProps = {
   state: PlayerViewState;
   gameTitle: string;
   message: string;
-  lastNote: {
-    text: string;
-    cardId: CardID | null;
-  } | null;
+  lastNote:
+    | {
+        kind: "peek";
+        text: string;
+        cardId: CardID | null;
+      }
+    | {
+        kind: "compare";
+        text: string;
+        ownCardId: CardID | null;
+        otherCardId: CardID | null;
+      }
+    | {
+        kind: "multi_peek";
+        text: string;
+        seen: Array<{
+          targetPlayerId: string;
+          cardId: CardID | null;
+        }>;
+      }
+    | null;
   selectedInstanceId: string | null;
-  targetPlayerId: string;
+  selectedTargetPlayerIds: string[];
+  peekPlayerId: string;
   guessedValue: string;
   onSelectCard: (instanceId: string | null) => void;
-  onTargetPlayerChange: (playerId: string) => void;
+  onTargetPlayerIdsChange: (playerIds: string[]) => void;
+  onPeekPlayerChange: (playerId: string) => void;
   onGuessedValueChange: (value: string) => void;
   onToggleReady: (isReady: boolean) => void;
   onStartRound: () => void;
@@ -48,10 +67,12 @@ export function RoomPage({
   message,
   lastNote,
   selectedInstanceId,
-  targetPlayerId,
+  selectedTargetPlayerIds,
+  peekPlayerId,
   guessedValue,
   onSelectCard,
-  onTargetPlayerChange,
+  onTargetPlayerIdsChange,
+  onPeekPlayerChange,
   onGuessedValueChange,
   onToggleReady,
   onStartRound,
@@ -89,14 +110,103 @@ export function RoomPage({
     : statusMessage.startsWith("Rejoining room") || statusMessage.startsWith("Connection lost")
       ? "info"
       : "error";
-  
-  const guessNeeded = selectedCardDef?.id === "guard";
-  const targetNeeded =
-    selectedCardDef?.id === "guard" ||
-    selectedCardDef?.id === "priest" ||
-    selectedCardDef?.id === "baron" ||
-    selectedCardDef?.id === "king" ||
-    selectedCardDef?.id === "prince";
+  const targetPlayerId = selectedTargetPlayerIds[0] ?? "";
+  const cardId = selectedCardDef?.id ?? null;
+  const guessNeeded = cardId === "guard" || cardId === "bishop";
+  const singleTargetNeeded = [
+    "guard",
+    "bishop",
+    "priest",
+    "baron",
+    "sycophant",
+    "prince",
+    "king",
+    "dowager_queen",
+    "jester",
+  ].includes(cardId ?? "");
+  const multiTargetNeeded = cardId === "baroness" || cardId === "cardinal";
+  const targetNeeded = singleTargetNeeded || multiTargetNeeded;
+  const forcedTargetPlayerId = state.round?.forcedTargetPlayerId ?? null;
+  const guessValues = React.useMemo(() => {
+    if (cardId === "guard") {
+      return state.mode === "premium" ? [0, 2, 3, 4, 5, 6, 7, 8, 9] : [2, 3, 4, 5, 6, 7, 8];
+    }
+
+    if (cardId === "bishop") {
+      return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    }
+
+    return [];
+  }, [cardId, state.mode]);
+
+  const sameTargetSet = React.useCallback((left: string[], right: string[]) => {
+    if (left.length !== right.length) return false;
+    const a = [...left].sort();
+    const b = [...right].sort();
+    return a.every((value, index) => value === b[index]);
+  }, []);
+
+  const legalTargetSets = React.useMemo(() => {
+    if (!self || !cardId || !state.players) return [];
+
+    const targetableOthers = state.players
+      .filter((player) => player.id !== self.id && player.status === "active" && !player.protectedUntilNextTurn)
+      .map((player) => player.id);
+    const selfAndTargetableOthers = state.players
+      .filter((player) => player.status === "active" && (player.id === self.id || !player.protectedUntilNextTurn))
+      .map((player) => player.id);
+    const makePairs = (ids: string[]) => {
+      const pairs: string[][] = [];
+      for (let i = 0; i < ids.length; i += 1) {
+        for (let j = i + 1; j < ids.length; j += 1) {
+          pairs.push([ids[i]!, ids[j]!]);
+        }
+      }
+      return pairs;
+    };
+
+    let sets: string[][] = [];
+
+    switch (cardId) {
+      case "guard":
+      case "bishop":
+      case "priest":
+      case "baron":
+      case "king":
+      case "dowager_queen":
+      case "jester":
+        sets = targetableOthers.map((id) => [id]);
+        break;
+      case "sycophant":
+      case "prince":
+        sets = selfAndTargetableOthers.map((id) => [id]);
+        break;
+      case "baroness":
+        sets = [...targetableOthers.map((id) => [id]), ...makePairs(targetableOthers)];
+        break;
+      case "cardinal":
+        sets = makePairs(selfAndTargetableOthers);
+        break;
+      default:
+        sets = [];
+        break;
+    }
+
+    if (forcedTargetPlayerId && cardId !== "sycophant") {
+      sets = sets.filter((targetSet) => targetSet.includes(forcedTargetPlayerId));
+    }
+
+    return sets;
+  }, [cardId, forcedTargetPlayerId, self, state.players]);
+
+  const selectableTargetIds = React.useMemo(
+    () => [...new Set(legalTargetSets.flat())],
+    [legalTargetSets],
+  );
+  const isTargetSelectionValid = React.useMemo(
+    () => legalTargetSets.some((targetSet) => sameTargetSet(targetSet, selectedTargetPlayerIds)),
+    [legalTargetSets, sameTargetSet, selectedTargetPlayerIds],
+  );
 
   React.useEffect(() => {
     if (!isMyTurn) setPlayStage("select_card");
@@ -143,47 +253,27 @@ export function RoomPage({
   };
 
   const activePrivateNote = lastNote && dismissedNote !== lastNote.text ? lastNote : null;
-
-  const targetOptions = React.useMemo(() => {
-    if (!self || !selectedCardDef || !state.players) return [];
-
-    if (selectedCardDef.id === "prince") {
-      return state.players
-        .filter((player) => player.status === "active")
+  const jesterTargetedPlayerIds = React.useMemo(
+    () => new Set((state.round?.jesterAssignments ?? []).map((assignment) => assignment.targetPlayerId)),
+    [state.round?.jesterAssignments],
+  );
+  const targetOptions = React.useMemo(
+    () =>
+      (state.players ?? [])
+        .filter((player) => selectableTargetIds.includes(player.id))
         .map((player) => ({
           player,
-          selectable: player.id === self.id || !player.protectedUntilNextTurn,
-          protectedByHandmaid: player.id !== self.id && player.protectedUntilNextTurn,
-        }));
-    }
+          selectable: true,
+          protectedByHandmaid: player.id !== self?.id && player.protectedUntilNextTurn,
+        })),
+    [selectableTargetIds, self?.id, state.players],
+  );
 
-    if (selectedCardDef.targetRule === "single_other_non_protected") {
-      return state.players
-        .filter((player) => player.id !== self.id && player.status === "active")
-        .map((player) => ({
-          player,
-          selectable: !player.protectedUntilNextTurn,
-          protectedByHandmaid: player.protectedUntilNextTurn,
-        }));
-    }
-
-    if (selectedCardDef.targetRule === "self") {
-      return [{
-        player: self,
-        selectable: true,
-        protectedByHandmaid: false,
-      }];
-    }
-
-    return [];
-  }, [selectedCardDef, self, state.players]);
-
-  const hasSelectableTarget = targetOptions.some((option) => option.selectable);
+  const hasSelectableTarget = legalTargetSets.length > 0;
   const activeOpponentsCount = state.players?.filter((player) => player.id !== self?.id && player.status === "active").length ?? 0;
   const canPlayWithoutTarget = Boolean(
     selectedCardDef &&
     targetNeeded &&
-    selectedCardDef.id !== "prince" &&
     !hasSelectableTarget,
   );
   const mustPlayCountess = Boolean(
@@ -196,17 +286,68 @@ export function RoomPage({
     targetNeeded && !hasSelectableTarget
       ? activeOpponentsCount === 0
         ? "No opponent is left in the round, so this card will be played without effect."
-        : "All available opponents are protected by Handmaid, so this card will be played without effect."
+        : forcedTargetPlayerId
+          ? "The current Sycophant choice makes this card fizzle, so it will be discarded without effect."
+          : "All available opponents are protected by Handmaid, so this card will be played without effect."
       : null;
 
   React.useEffect(() => {
-    if (!targetPlayerId) return;
-
-    const selectedTargetStillValid = targetOptions.some((option) => option.player.id === targetPlayerId && option.selectable);
-    if (!selectedTargetStillValid) {
-      onTargetPlayerChange("");
+    if (!targetNeeded) {
+      if (selectedTargetPlayerIds.length > 0) {
+        onTargetPlayerIdsChange([]);
+      }
+      return;
     }
-  }, [onTargetPlayerChange, targetOptions, targetPlayerId]);
+
+    if (multiTargetNeeded) {
+      if (selectedTargetPlayerIds.length > 0 && !isTargetSelectionValid) {
+        onTargetPlayerIdsChange([]);
+      }
+      return;
+    }
+
+    const defaultTargetId = legalTargetSets[0]?.[0] ?? "";
+    if (!targetPlayerId) {
+      if (defaultTargetId) {
+        onTargetPlayerIdsChange([defaultTargetId]);
+      }
+      return;
+    }
+
+    const selectedTargetStillValid = legalTargetSets.some((targetSet) => sameTargetSet(targetSet, [targetPlayerId]));
+    if (!selectedTargetStillValid) {
+      onTargetPlayerIdsChange(defaultTargetId ? [defaultTargetId] : []);
+    }
+  }, [isTargetSelectionValid, legalTargetSets, multiTargetNeeded, onTargetPlayerIdsChange, sameTargetSet, selectedTargetPlayerIds, targetNeeded, targetPlayerId]);
+
+  React.useEffect(() => {
+    if (cardId !== "cardinal") {
+      if (peekPlayerId) {
+        onPeekPlayerChange("");
+      }
+      return;
+    }
+
+    if (peekPlayerId && !selectedTargetPlayerIds.includes(peekPlayerId)) {
+      onPeekPlayerChange("");
+    }
+  }, [cardId, onPeekPlayerChange, peekPlayerId, selectedTargetPlayerIds]);
+
+  const handleTargetToggle = (playerId: string) => {
+    if (!multiTargetNeeded) {
+      onTargetPlayerIdsChange([playerId]);
+      return;
+    }
+
+    if (selectedTargetPlayerIds.includes(playerId)) {
+      onTargetPlayerIdsChange(selectedTargetPlayerIds.filter((id) => id !== playerId));
+      return;
+    }
+
+    const nextIds = [...selectedTargetPlayerIds, playerId];
+    const trimmedNextIds = cardId === "cardinal" && nextIds.length > 2 ? nextIds.slice(nextIds.length - 2) : nextIds;
+    onTargetPlayerIdsChange(trimmedNextIds);
+  };
 
   return (
     <main className="table-layout">
@@ -214,6 +355,7 @@ export function RoomPage({
         <div className="topbar-info">
           <h1>{gameTitle}</h1>
           <span className="phase-badge">{showLobby ? "Waiting Room" : state.phase?.replaceAll("_", " ")}</span>
+          <span className="phase-badge">{state.mode === "premium" ? "Premium (5-8 people)" : "Classic"}</span>
           <button
             type="button"
             className="room-code-badge room-code-button copyable"
@@ -230,11 +372,6 @@ export function RoomPage({
               {isMyTurn ? "Your Turn" : currentTurnName ? `${currentTurnName}'s Turn` : "Turn in progress"}
             </span>
           )}
-          <LoveLetterInfoDrawer
-            buttonClassName="info-trigger-button info-trigger-button-room"
-            buttonLabel={<Info size={16} strokeWidth={2.3} aria-hidden="true" />}
-            buttonTitle="Open Love Letter rules and card guide"
-          />
           <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
         </div>
       </header>
@@ -263,6 +400,12 @@ export function RoomPage({
                         <Coins size={12} strokeWidth={2.1} aria-hidden="true" />
                         {player.tokens || 0}
                       </span>
+                      {forcedTargetPlayerId === player.id ? (
+                        <span className="status-inline">Sycophant</span>
+                      ) : null}
+                      {jesterTargetedPlayerIds.has(player.id) ? (
+                        <span className="status-inline">Jester</span>
+                      ) : null}
                     </span>
                   </div>
                   {showReadyPills && <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} title={player.isReady ? "Ready" : "Not ready"} />}
@@ -306,11 +449,44 @@ export function RoomPage({
                 </button>
               </div>
               <p>{activePrivateNote.text}</p>
-              {activePrivateNote.cardId && (
+              {activePrivateNote.kind === "compare" ? (
+                <div className="comparison-reveal">
+                  <div className="comparison-card-lane comparison-card-lane-self">
+                    <span className="comparison-card-label">Your card</span>
+                    {activePrivateNote.ownCardId ? (
+                      <CardView card={{ instanceId: "compare-self", cardId: activePrivateNote.ownCardId }} compact />
+                    ) : (
+                      <div className="comparison-empty-card">No card revealed</div>
+                    )}
+                  </div>
+                  <div className="comparison-divider">vs</div>
+                  <div className="comparison-card-lane comparison-card-lane-opponent">
+                    <span className="comparison-card-label">Opposing card</span>
+                    {activePrivateNote.otherCardId ? (
+                      <CardView card={{ instanceId: "compare-other", cardId: activePrivateNote.otherCardId }} compact />
+                    ) : (
+                      <div className="comparison-empty-card">No card revealed</div>
+                    )}
+                  </div>
+                </div>
+              ) : activePrivateNote.kind === "multi_peek" ? (
+                <div className="discard-spread discard-spread-tight">
+                  {activePrivateNote.seen.map((entry) => (
+                    <div key={entry.targetPlayerId} className="comparison-card-lane comparison-card-lane-self">
+                      <span className="comparison-card-label">{playerNameById(state, entry.targetPlayerId)}</span>
+                      {entry.cardId ? (
+                        <CardView card={{ instanceId: `peek-${entry.targetPlayerId}`, cardId: entry.cardId }} compact />
+                      ) : (
+                        <div className="comparison-empty-card">No card revealed</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : activePrivateNote.cardId ? (
                 <div className="private-card-showcase">
                   <CardView card={{ instanceId: "temp", cardId: activePrivateNote.cardId }} compact />
                 </div>
-              )}
+              ) : null}
             </section>
           )}
         </aside>
@@ -319,7 +495,10 @@ export function RoomPage({
           {showLobby ? (
             <div className="game-panel center-lobby">
               <h2>Waiting for players...</h2>
-              <p>Need at least 2 players. Everyone must be ready to start.</p>
+              <p>
+                Need at least 2 players. Everyone must be ready to start.
+                {state.mode === "premium" ? " Premium is intended for 5 to 8 people." : ""}
+              </p>
               <div className="lobby-stats">
                 <div className="stat-box"><strong>{playerCount}</strong> <span>Players</span></div>
                 <div className="stat-box"><strong>{readyCount}</strong> <span>Ready</span></div>
@@ -412,7 +591,7 @@ export function RoomPage({
                         <div className="discard-fan">
                           {player.discardPile?.map((card, index) => (
                             <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
-                              <CardView card={card} compact />
+                              <CardView card={card} mini />
                             </div>
                           ))}
                         </div>
@@ -467,24 +646,6 @@ export function RoomPage({
                   <p className={`status-banner-text is-${statusTone}`}>{statusMessage}</p>
                 </div>
               )}
-              <div className="game-panel deck-status-panel">
-                <div className="board-header">
-                  <h3>Deck</h3>
-                  <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
-                </div>
-
-                {(state.round?.visibleRemovedCards?.length ?? 0) > 0 && (
-                  <div className="removed-section">
-                    <h4>Setup Cards (Burned)</h4>
-                    <div className="discard-spread">
-                      {state.round?.visibleRemovedCards?.map((card) => (
-                        <CardView key={card.instanceId} card={card} compact />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               <div className="game-panel player-area">
                 {playStage === "select_card" ? (
                   <div className="focus-hand-area">
@@ -532,22 +693,31 @@ export function RoomPage({
                           </p>
                         )}
 
+                        {forcedTargetPlayerId ? (
+                          <p className="muted-text">
+                            Sycophant is active: the next targeting effect must include {playerNameById(state, forcedTargetPlayerId)}.
+                          </p>
+                        ) : null}
+
                         {targetNeeded && (
                           <div className="selection-group">
-                            <label className="dark-label">1. Choose a Target</label>
+                            <label className="dark-label">
+                              {multiTargetNeeded ? "1. Choose Target Players" : "1. Choose a Target"}
+                            </label>
                             {targetHintText && <p className="muted-text">{targetHintText}</p>}
                             <div className="selection-grid">
                               {targetOptions.map(({ player, selectable, protectedByHandmaid }) => (
                                 <button 
                                   key={player.id} 
                                   type="button"
-                                  className={`grid-btn ${targetPlayerId === player.id ? "selected" : ""} ${!selectable ? "is-disabled" : ""}`}
-                                  onClick={() => selectable && onTargetPlayerChange(player.id)}
+                                  className={`grid-btn ${selectedTargetPlayerIds.includes(player.id) ? "selected" : ""} ${!selectable ? "is-disabled" : ""}`}
+                                  onClick={() => selectable && handleTargetToggle(player.id)}
                                   disabled={!selectable}
                                   title={protectedByHandmaid ? `${player.name} is protected by Handmaid.` : undefined}
                                 >
-                                  <span>{player.name}</span>
+                                  <span>{player.id === self?.id ? `${player.name} (You)` : player.name}</span>
                                   {protectedByHandmaid && <span className="grid-btn-note">Protected</span>}
+                                  {forcedTargetPlayerId === player.id && <span className="grid-btn-note">Required</span>}
                                 </button>
                               ))}
                             </div>
@@ -558,7 +728,7 @@ export function RoomPage({
                           <div className="selection-group">
                             <label className="dark-label">2. Guess their Card</label>
                             <div className="selection-grid">
-                              {[2, 3, 4, 5, 6, 7, 8].map(val => (
+                              {guessValues.map((val) => (
                                 <button
                                   key={val}
                                   type="button"
@@ -566,17 +736,41 @@ export function RoomPage({
                                   onClick={() => onGuessedValueChange(val.toString())}
                                 >
                                   <span className="guess-val">{val}</span>
-                                  <span className="guess-name">{getCardDef(cardIdByValue(val)).name}</span>
+                                  <span className="guess-name">{cardNamesByValue(val, state.mode).join(" / ")}</span>
                                 </button>
                               ))}
                             </div>
                           </div>
                         )}
 
+                        {cardId === "cardinal" && selectedTargetPlayerIds.length === 2 ? (
+                          <div className="selection-group">
+                            <label className="dark-label">3. Optional Peek After Swap</label>
+                            <div className="selection-grid">
+                              {selectedTargetPlayerIds.map((id) => (
+                                <button
+                                  key={id}
+                                  type="button"
+                                  className={`grid-btn ${peekPlayerId === id ? "selected" : ""}`}
+                                  onClick={() => onPeekPlayerChange(peekPlayerId === id ? "" : id)}
+                                >
+                                  <span>{playerNameById(state, id)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
                         <button
                           type="button"
                           className="primary-button play-btn"
-                          disabled={!isMyTurn || !selectedCard || mustPlayCountess || (targetNeeded && !targetPlayerId && !canPlayWithoutTarget) || (guessNeeded && hasSelectableTarget && !guessedValue)}
+                          disabled={
+                            !isMyTurn ||
+                            !selectedCard ||
+                            mustPlayCountess ||
+                            (targetNeeded && !isTargetSelectionValid && !canPlayWithoutTarget) ||
+                            (guessNeeded && hasSelectableTarget && !guessedValue)
+                          }
                           onClick={handleConfirmPlay}
                         >
                           Confirm & Play
@@ -587,9 +781,10 @@ export function RoomPage({
                 )}
               </div>
 
-              <div className="game-panel board-area">
+              <div className="game-panel board-area live-board-area">
                 <div className="board-header">
-                  <h3>Discard Piles</h3>
+                  <h3>Round Table</h3>
+                  <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
                 </div>
                 
                 <div className="table-grid">
@@ -609,13 +804,32 @@ export function RoomPage({
                         <div className="discard-fan">
                           {player.discardPile?.map((card, index) => (
                             <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
-                              <CardView card={card} compact />
+                              <CardView card={card} mini />
                             </div>
                           ))}
                         </div>
                       )}
                     </div>
                   ))}
+                </div>
+
+                <div className="board-meta-row">
+                  <div className="board-meta-card board-meta-card-burned">
+                    <span className="board-meta-eyebrow">Burned Setup Cards</span>
+                    {(state.round?.visibleRemovedCards?.length ?? 0) > 0 ? (
+                      <div className="discard-spread discard-spread-tight">
+                        {state.round?.visibleRemovedCards?.map((card) => (
+                          <CardView key={card.instanceId} card={card} mini />
+                        ))}
+                      </div>
+                    ) : (
+                      <p>No face-up setup cards were removed this round.</p>
+                    )}
+                  </div>
+                  <div className="board-meta-card">
+                    <span className="board-meta-eyebrow">Discard Reading Tip</span>
+                    <p>Public discards stay visible so everyone can track what has already been played.</p>
+                  </div>
                 </div>
               </div>
             </>
@@ -630,6 +844,17 @@ export function RoomPage({
         </aside>
 
       </div>
+      <LoveLetterInfoDrawer
+        buttonClassName="info-trigger-button room-floating-info-button"
+        buttonLabel={
+          <>
+            <Info size={18} strokeWidth={2.3} aria-hidden="true" />
+            <span className="room-floating-info-label">Guide</span>
+          </>
+        }
+        buttonTitle="Open Love Letter rules and card guide"
+        mode={state.mode}
+      />
     </main>
   );
 }

@@ -1,31 +1,32 @@
-// packages/shared/src/engine.ts
-
 import { randomUUID } from "node:crypto";
 
-import { BASE_CARDS } from "./cards.js";
+import { getCardCopies, getCardDef, getCardsForMode } from "./cards.js";
 import { resolvePlayAction } from "./rules.js";
 import type { ActionResult } from "./rules.js";
-import type { CardID, CardInstance, GameState, PlayerID, PlayerState, PlayerViewState, PublicGameState, RoomID } from "./types.js";
+import type { CardID, CardInstance, GameState, LoveLetterMode, PlayerID, PlayerState, PlayerViewState, PublicGameState, RoomID } from "./types.js";
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
+  for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
 }
 
-function buildDeck(): CardInstance[] {
+function buildDeck(mode: LoveLetterMode): CardInstance[] {
   const deck: CardInstance[] = [];
-  for (const def of BASE_CARDS) {
-    for (let i = 0; i < def.copies; i++) {
+
+  for (const def of getCardsForMode(mode)) {
+    const copies = getCardCopies(def.id, mode);
+    for (let i = 0; i < copies; i += 1) {
       deck.push({
         instanceId: `${def.id}-${i}-${randomUUID()}`,
         cardId: def.id,
       });
     }
   }
+
   return shuffle(deck);
 }
 
@@ -38,14 +39,11 @@ function getPlayerById(players: PlayerState[], playerId: PlayerID): PlayerState 
 }
 
 function getCardValue(cardId: CardID): number {
-  const card = BASE_CARDS.find((candidate) => candidate.id === cardId);
-  if (!card) {
-    throw new Error(`Unknown card id: ${cardId}`);
-  }
-  return card.value;
+  return getCardDef(cardId).value;
 }
 
-function getWinningTokenCount(playerCount: number): number {
+function getWinningTokenCount(mode: LoveLetterMode, playerCount: number): number {
+  if (mode === "premium") return 4;
   if (playerCount <= 2) return 7;
   if (playerCount === 3) return 5;
   return 4;
@@ -53,6 +51,58 @@ function getWinningTokenCount(playerCount: number): number {
 
 function getFirstActivePlayerId(players: PlayerState[]): PlayerID | null {
   return players.find((player) => player.status === "active")?.id ?? null;
+}
+
+function getImmediateMatchLeaders(state: GameState): PlayerID[] {
+  const tokenTarget = getWinningTokenCount(state.mode, state.players.length);
+  const contenders = state.players.filter((player) => player.tokens >= tokenTarget);
+  if (contenders.length === 0) return [];
+
+  const highestTokens = Math.max(...contenders.map((player) => player.tokens));
+  return contenders.filter((player) => player.tokens === highestTokens).map((player) => player.id);
+}
+
+function finalizeMatchIfWon(state: GameState): GameState {
+  const leaders = getImmediateMatchLeaders(state);
+  if (leaders.length === 0) return state;
+
+  if (state.mode === "premium" && leaders.length > 1) {
+    return {
+      ...state,
+      matchWinnerIds: [],
+    };
+  }
+
+  return {
+    ...state,
+    phase: "match_over",
+    matchWinnerIds: [...leaders],
+    log: [...state.log, { type: "match_ended", winnerIds: leaders }],
+  };
+}
+
+function getCountBonus(player: PlayerState): number {
+  return player.discardPile.filter((card) => card.cardId === "count").length;
+}
+
+function getRoundHandStrength(player: PlayerState, mode: LoveLetterMode): number {
+  const card = player.hand[0];
+  if (!card) return Number.NEGATIVE_INFINITY;
+
+  return getCardValue(card.cardId) + (mode === "premium" ? getCountBonus(player) : 0);
+}
+
+function princessBeatsBishop(player: PlayerState, opponent: PlayerState, mode: LoveLetterMode): boolean {
+  if (mode !== "premium") return false;
+
+  const playerCard = player.hand[0]?.cardId ?? null;
+  const opponentCard = opponent.hand[0]?.cardId ?? null;
+  if (!playerCard || !opponentCard) return false;
+
+  const playerStrength = getRoundHandStrength(player, mode);
+  const opponentStrength = getRoundHandStrength(opponent, mode);
+
+  return playerCard === "princess" && opponentCard === "bishop" && playerStrength === 8 && opponentStrength === 9;
 }
 
 export function canStartLobbyRound(state: GameState): boolean {
@@ -71,7 +121,13 @@ function drawToActivePlayer(state: GameState, playerId: PlayerID): GameState {
     hand: [...player.hand],
     discardPile: [...player.discardPile],
   }));
-  const round = { ...state.round, deck: [...state.round.deck], visibleRemovedCards: [...state.round.visibleRemovedCards], roundWinners: [...state.round.roundWinners] };
+  const round = {
+    ...state.round,
+    deck: [...state.round.deck],
+    visibleRemovedCards: [...state.round.visibleRemovedCards],
+    roundWinners: [...state.round.roundWinners],
+    jesterAssignments: [...state.round.jesterAssignments],
+  };
   const player = getPlayerById(players, playerId);
   if (!player || player.status !== "active") {
     return state;
@@ -111,30 +167,32 @@ function getNextActivePlayerId(players: PlayerState[], currentPlayerId: PlayerID
 }
 
 function finishRound(state: GameState, winnerIds: PlayerID[]): GameState {
-  const tokenTarget = getWinningTokenCount(state.players.length);
-  const players = state.players.map((player) => {
-    const nextTokens = winnerIds.includes(player.id) ? player.tokens + 1 : player.tokens;
-    return {
-      ...player,
-      hand: [...player.hand],
-      discardPile: [...player.discardPile],
-      tokens: nextTokens,
-    };
-  });
-  const matchWinnerIds = players.filter((player) => player.tokens >= tokenTarget).map((player) => player.id);
-  const awardedLogs = players
-    .filter((player) => winnerIds.includes(player.id))
-    .map((player) => ({ type: "token_awarded" as const, playerId: player.id, tokens: player.tokens }));
-  const endLogs = [
-    ...state.log,
-    { type: "round_ended" as const, winnerIds },
-    ...awardedLogs,
-    ...(matchWinnerIds.length > 0 ? [{ type: "match_ended" as const, winnerIds: matchWinnerIds }] : []),
-  ];
+  const players = state.players.map((player) => ({
+    ...player,
+    hand: [...player.hand],
+    discardPile: [...player.discardPile],
+  }));
+  const log = [...state.log, { type: "round_ended" as const, winnerIds }];
 
-  return {
+  for (const winnerId of winnerIds) {
+    const winner = players.find((player) => player.id === winnerId);
+    if (!winner) continue;
+    winner.tokens += 1;
+    log.push({ type: "token_awarded", playerId: winner.id, tokens: winner.tokens });
+  }
+
+  for (const assignment of state.round?.jesterAssignments ?? []) {
+    if (!winnerIds.includes(assignment.targetPlayerId)) continue;
+
+    const bettor = players.find((player) => player.id === assignment.playerId);
+    if (!bettor) continue;
+    bettor.tokens += 1;
+    log.push({ type: "token_awarded", playerId: bettor.id, tokens: bettor.tokens });
+  }
+
+  const nextState: GameState = {
     ...state,
-    phase: matchWinnerIds.length > 0 ? "match_over" : "round_over",
+    phase: "round_over",
     players,
     round: state.round
       ? {
@@ -143,19 +201,44 @@ function finishRound(state: GameState, winnerIds: PlayerID[]): GameState {
         }
       : null,
     roundWinnerIds: [...winnerIds],
-    matchWinnerIds,
-    log: endLogs,
+    matchWinnerIds: [],
+    log,
   };
+
+  return finalizeMatchIfWon(nextState);
 }
 
-function getRoundWinners(players: PlayerState[]): PlayerID[] {
+function getRoundWinners(players: PlayerState[], mode: LoveLetterMode): PlayerID[] {
   const activePlayers = getActivePlayers(players);
   if (activePlayers.length <= 1) {
     return activePlayers.map((player) => player.id);
   }
 
-  const highestValue = Math.max(...activePlayers.map((player) => getCardValue(player.hand[0].cardId)));
-  const highestPlayers = activePlayers.filter((player) => getCardValue(player.hand[0].cardId) === highestValue);
+  let bestStrength = Number.NEGATIVE_INFINITY;
+  let highestPlayers: PlayerState[] = [];
+
+  for (const player of activePlayers) {
+    const strength = getRoundHandStrength(player, mode);
+    if (strength > bestStrength) {
+      bestStrength = strength;
+      highestPlayers = [player];
+      continue;
+    }
+
+    if (strength === bestStrength) {
+      highestPlayers.push(player);
+    }
+  }
+
+  if (mode === "premium") {
+    const princessPlayers = highestPlayers.filter((player) =>
+      highestPlayers.some((opponent) => princessBeatsBishop(player, opponent, mode)),
+    );
+    if (princessPlayers.length > 0) {
+      highestPlayers = princessPlayers;
+    }
+  }
+
   if (highestPlayers.length <= 1) {
     return highestPlayers.map((player) => player.id);
   }
@@ -169,10 +252,11 @@ function getRoundWinners(players: PlayerState[]): PlayerID[] {
     .map((player) => player.id);
 }
 
-export function createGame(roomId: RoomID, creatorId: PlayerID): GameState {
+export function createGame(roomId: RoomID, creatorId: PlayerID, mode: LoveLetterMode = "classic"): GameState {
   return {
     roomId,
     creatorId,
+    mode,
     phase: "lobby",
     players: [],
     round: null,
@@ -184,7 +268,7 @@ export function createGame(roomId: RoomID, creatorId: PlayerID): GameState {
 
 export function addPlayer(state: GameState, id: string, name: string): GameState {
   if (state.phase !== "lobby") return state;
-  if (state.players.some((p) => p.id === id)) return state;
+  if (state.players.some((player) => player.id === id)) return state;
 
   const player: PlayerState = {
     id,
@@ -237,6 +321,11 @@ export function removePlayer(state: GameState, playerId: PlayerID): GameState {
           ...state.round,
           currentPlayerId:
             state.round.currentPlayerId === playerId ? getFirstActivePlayerId(players) : state.round.currentPlayerId,
+          forcedTargetPlayerId:
+            state.round.forcedTargetPlayerId === playerId ? null : state.round.forcedTargetPlayerId,
+          jesterAssignments: state.round.jesterAssignments.filter(
+            (assignment) => assignment.playerId !== playerId && assignment.targetPlayerId !== playerId,
+          ),
         };
 
   const nextState: GameState = {
@@ -300,7 +389,7 @@ export function startRound(state: GameState): GameState {
   if ((state.phase === "lobby" || state.phase === "round_over") && !canStartReadyRound(state)) return state;
   if (state.players.length < 2 || state.phase === "match_over") return state;
 
-  const deck = buildDeck();
+  const deck = buildDeck(state.mode);
   const burned = deck.splice(0, 1);
   const visibleRemovedCards = state.players.length === 2 ? deck.splice(0, 3) : [];
   const starterId =
@@ -308,8 +397,8 @@ export function startRound(state: GameState): GameState {
     state.players[0]?.id ??
     null;
 
-  const players = state.players.map((p) => ({
-    ...p,
+  const players = state.players.map((player) => ({
+    ...player,
     hand: [deck.shift()!],
     discardPile: [],
     status: "active" as const,
@@ -317,10 +406,8 @@ export function startRound(state: GameState): GameState {
     isReady: false,
   }));
 
-  const firstPlayerId = starterId;
-
-  if (firstPlayerId) {
-    const firstPlayer = getPlayerById(players, firstPlayerId);
+  if (starterId) {
+    const firstPlayer = getPlayerById(players, starterId);
     const firstDraw = deck.shift();
     if (firstPlayer && firstDraw) {
       firstPlayer.hand.push(firstDraw);
@@ -335,27 +422,31 @@ export function startRound(state: GameState): GameState {
       deck,
       setAsideCard: burned[0] ?? null,
       visibleRemovedCards,
-      currentPlayerId: firstPlayerId,
+      currentPlayerId: starterId,
       turnNumber: 1,
       roundWinners: [],
-      lastRoundStarterId: firstPlayerId,
+      lastRoundStarterId: starterId,
+      forcedTargetPlayerId: null,
+      jesterAssignments: [],
     },
     roundWinnerIds: [],
+    matchWinnerIds: [],
     log: [...state.log, { type: "round_started" }],
   };
 
-  const nextLog = firstPlayerId ? [...nextState.log, { type: "card_drawn" as const, playerId: firstPlayerId }] : nextState.log;
-  return {
-    ...nextState,
-    log: nextLog,
-  };
+  return starterId
+    ? {
+        ...nextState,
+        log: [...nextState.log, { type: "card_drawn", playerId: starterId }],
+      }
+    : nextState;
 }
 
 export function playCard(
   state: GameState,
   playerId: PlayerID,
   instanceId: string,
-  options: { targetPlayerId?: PlayerID; guessedValue?: number } = {},
+  options: { targetPlayerId?: PlayerID; targetPlayerIds?: PlayerID[]; guessedValue?: number; peekPlayerId?: PlayerID } = {},
 ): GameState {
   const result = playCardAction(state, playerId, instanceId, options);
   return result.state ?? state;
@@ -365,21 +456,30 @@ export function playCardAction(
   state: GameState,
   playerId: PlayerID,
   instanceId: string,
-  options: { targetPlayerId?: PlayerID; guessedValue?: number } = {},
+  options: { targetPlayerId?: PlayerID; targetPlayerIds?: PlayerID[]; guessedValue?: number; peekPlayerId?: PlayerID } = {},
 ): ActionResult {
   const result = resolvePlayAction(state, {
     type: "play_card",
     playerId,
     instanceId,
     targetPlayerId: options.targetPlayerId,
+    targetPlayerIds: options.targetPlayerIds,
     guessedValue: options.guessedValue,
+    peekPlayerId: options.peekPlayerId,
   });
 
   if (!result.ok || !result.state || !result.state.round) {
     return result;
   }
 
-  const resolvedState = result.state;
+  const resolvedState = finalizeMatchIfWon(result.state);
+  if (resolvedState.phase === "match_over") {
+    return {
+      ...result,
+      state: resolvedState,
+    };
+  }
+
   const resolvedRound = resolvedState.round!;
   const activePlayers = getActivePlayers(resolvedState.players);
 
@@ -393,7 +493,7 @@ export function playCardAction(
   if (resolvedRound.deck.length === 0) {
     return {
       ...result,
-      state: finishRound(resolvedState, getRoundWinners(resolvedState.players)),
+      state: finishRound(resolvedState, getRoundWinners(resolvedState.players, resolvedState.mode)),
     };
   }
 
@@ -401,7 +501,7 @@ export function playCardAction(
   if (!nextPlayerId) {
     return {
       ...result,
-      state: finishRound(resolvedState, getRoundWinners(resolvedState.players)),
+      state: finishRound(resolvedState, getRoundWinners(resolvedState.players, resolvedState.mode)),
     };
   }
 
@@ -424,6 +524,7 @@ export function toPublicGameState(state: GameState): PublicGameState {
   return {
     roomId: state.roomId,
     creatorId: state.creatorId,
+    mode: state.mode,
     phase: state.phase,
     players: state.players.map((player) => ({
       id: player.id,
@@ -443,6 +544,8 @@ export function toPublicGameState(state: GameState): PublicGameState {
           turnNumber: state.round.turnNumber,
           roundWinners: [...state.round.roundWinners],
           lastRoundStarterId: state.round.lastRoundStarterId,
+          forcedTargetPlayerId: state.round.forcedTargetPlayerId,
+          jesterAssignments: [...state.round.jesterAssignments],
         }
       : null,
     roundWinnerIds: [...state.roundWinnerIds],

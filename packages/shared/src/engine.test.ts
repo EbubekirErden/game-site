@@ -2,14 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { addPlayer, createGame, playCardAction, removePlayer, setPlayerReady, startRound } from "./engine.js";
-import type { CardInstance, GameState, PlayerID } from "./types.js";
+import type { CardInstance, GameState, LoveLetterMode, PlayerID } from "./types.js";
 
 function makeCard(cardId: CardInstance["cardId"], instanceId: string): CardInstance {
   return { cardId, instanceId };
 }
 
-function setupStartedGame(playerNames: string[]): GameState {
-  let state = createGame("room-1", "p1");
+function setupStartedGame(playerNames: string[], mode: LoveLetterMode = "classic"): GameState {
+  let state = createGame("room-1", "p1", mode);
 
   for (const [index, name] of playerNames.entries()) {
     state = addPlayer(state, `p${index + 1}`, name);
@@ -195,4 +195,102 @@ test("disconnecting the last opponent awards the round and returns the room to l
   assert.equal(state.players[0]?.id, "p1");
   assert.equal(state.players[0]?.tokens, 1);
   assert.equal(state.round, null);
+});
+
+test("premium bishop awards a token and redraws the guessed target", () => {
+  let state = setupStartedGame(["Ava", "Ben", "Cara", "Drew", "Elle"], "premium");
+  state = setPlayerHand(state, "p1", [makeCard("bishop", "bishop-1"), makeCard("guard", "guard-1")]);
+  state = setPlayerHand(state, "p2", [makeCard("prince", "prince-1")]);
+  state = setRoundDeck(state, [makeCard("countess", "deck-countess-1"), makeCard("guard", "deck-guard-1")]);
+
+  const result = playCardAction(state, "p1", "bishop-1", {
+    targetPlayerId: "p2",
+    guessedValue: 5,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state?.players.find((player) => player.id === "p1")?.tokens, 1);
+  assert.equal(result.state?.players.find((player) => player.id === "p2")?.hand[0]?.cardId, "countess");
+});
+
+test("premium assassin reflects a guard and survives", () => {
+  let state = setupStartedGame(["Ava", "Ben", "Cara", "Drew", "Elle"], "premium");
+  state = setPlayerHand(state, "p1", [makeCard("guard", "guard-1"), makeCard("priest", "priest-1")]);
+  state = setPlayerHand(state, "p2", [makeCard("assassin", "assassin-1")]);
+  state = setRoundDeck(state, [makeCard("countess", "deck-countess-1"), makeCard("guard", "deck-guard-1")]);
+
+  const result = playCardAction(state, "p1", "guard-1", {
+    targetPlayerId: "p2",
+    guessedValue: 0,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state?.players.find((player) => player.id === "p1")?.status, "eliminated");
+  assert.equal(result.state?.players.find((player) => player.id === "p2")?.status, "active");
+  assert.equal(result.state?.players.find((player) => player.id === "p2")?.discardPile.some((card) => card.cardId === "assassin"), true);
+});
+
+test("premium constable awards a token when its owner is eliminated", () => {
+  let state = setupStartedGame(["Ava", "Ben", "Cara", "Drew", "Elle"], "premium");
+  state = setPlayerHand(state, "p1", [makeCard("baron", "baron-1"), makeCard("prince", "prince-1")]);
+  state = setPlayerHand(state, "p2", [makeCard("priest", "priest-1")]);
+  state = {
+    ...state,
+    players: state.players.map((player) =>
+      player.id === "p2"
+        ? {
+            ...player,
+            discardPile: [makeCard("constable", "constable-1")],
+          }
+        : player,
+    ),
+  };
+  state = setRoundDeck(state, [makeCard("guard", "deck-guard-1"), makeCard("guard", "deck-guard-2")]);
+
+  const result = playCardAction(state, "p1", "baron-1", { targetPlayerId: "p2" });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state?.players.find((player) => player.id === "p2")?.status, "eliminated");
+  assert.equal(result.state?.players.find((player) => player.id === "p2")?.tokens, 1);
+});
+
+test("premium count boosts round-end strength", () => {
+  let state = setupStartedGame(["Ava", "Ben", "Cara", "Drew", "Elle"], "premium");
+  state = setPlayerHand(state, "p1", [makeCard("guard", "guard-1"), makeCard("dowager_queen", "dowager-1")]);
+  state = setPlayerHand(state, "p2", [makeCard("princess", "princess-1")]);
+  state = {
+    ...state,
+    players: state.players.map((player) => {
+      if (player.id === "p1") {
+        return {
+          ...player,
+          discardPile: [makeCard("count", "count-discard-1"), makeCard("count", "count-discard-2")],
+        };
+      }
+
+      if (player.id === "p2") {
+        return {
+          ...player,
+          protectedUntilNextTurn: true,
+        };
+      }
+
+      if (player.id === "p3" || player.id === "p4" || player.id === "p5") {
+        return {
+          ...player,
+          status: "eliminated",
+          hand: [],
+        };
+      }
+
+      return player;
+    }),
+  };
+  state = setRoundDeck(state, []);
+
+  const result = playCardAction(state, "p1", "guard-1");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.state?.phase, "round_over");
+  assert.deepEqual(result.state?.roundWinnerIds, ["p1"]);
 });

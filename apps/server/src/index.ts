@@ -106,7 +106,7 @@ function emitRoomState(roomId: string): void {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:create", ({ name, playerId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
+  socket.on("room:create", ({ name, playerId, mode }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const roomId = generateRoomCode();
     const normalizedPlayerId = String(playerId ?? "").trim();
     if (!normalizedPlayerId) {
@@ -114,7 +114,8 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = createGame(roomId, normalizedPlayerId);
+    const normalizedMode = mode === "premium" ? "premium" : "classic";
+    const game = createGame(roomId, normalizedPlayerId, normalizedMode);
     const next = addPlayer(game, normalizedPlayerId, name);
     rooms.set(roomId, next);
     bindSocketToPlayer(socket.id, roomId, normalizedPlayerId);
@@ -238,7 +239,7 @@ io.on("connection", (socket) => {
     emitRoomState(normalizedRoomId);
   });
 
-  socket.on("card:play", ({ roomId, instanceId, targetPlayerId, guessedValue }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+  socket.on("card:play", ({ roomId, instanceId, targetPlayerId, targetPlayerIds, guessedValue, peekPlayerId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
     const binding = getBoundPlayer(socket.id);
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     if (!binding || binding.roomId !== normalizedRoomId) {
@@ -254,7 +255,9 @@ io.on("connection", (socket) => {
 
     const result = playCardAction(game, binding.playerId, instanceId, {
       targetPlayerId,
+      targetPlayerIds,
       guessedValue,
+      peekPlayerId,
     });
 
     if (!result.ok || !result.state) {

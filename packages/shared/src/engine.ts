@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getCardCopies, getCardDef, getCardsForMode } from "./cards.js";
 import { resolveCardinalPeekAction, resolvePlayAction } from "./rules.js";
 import type { ActionResult } from "./rules.js";
-import type { CardID, CardInstance, GameState, LoveLetterMode, PlayerID, PlayerState, PlayerViewState, PublicGameState, RoomID } from "./types.js";
+import type { BotMemorySnapshot, BotObservation, CardID, CardInstance, GameState, LoveLetterMode, PlayerID, PlayerState, PlayerViewState, PublicGameState, RoomID } from "./types.js";
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
@@ -701,5 +701,22 @@ export function toPlayerViewState(state: GameState, selfPlayerId: PlayerID): Pla
       tokens: player.tokens,
       isReady: player.isReady,
     })),
+  };
+}
+
+export function toBotObservation(
+  state: GameState,
+  selfPlayerId: PlayerID,
+  memory: BotMemorySnapshot = {
+    observedPrivateEffects: [],
+    observedCardFacts: [],
+  },
+): BotObservation {
+  return {
+    ...toPlayerViewState(state, selfPlayerId),
+    memory: {
+      observedPrivateEffects: [...memory.observedPrivateEffects],
+      observedCardFacts: [...memory.observedCardFacts],
+    },
   };
 }

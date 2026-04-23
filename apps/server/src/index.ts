@@ -3,7 +3,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { Server } from "socket.io";
 
-import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
+import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toBotObservation, toPlayerViewState } from "@game-site/shared/engine";
+import type { BotMemorySnapshot, BotObservedCardFact, CardInstance, PrivateEffectPresentation } from "@game-site/shared";
 import { chooseRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
 
 const httpServer = createServer();
@@ -19,6 +20,7 @@ const playerBySocketId = new Map<string, { roomId: string; playerId: string }>()
 const activeSocketByPlayerKey = new Map<string, string>();
 const pendingRemovalByPlayerKey = new Map<string, NodeJS.Timeout>();
 const botPlayerIdsByRoomId = new Map<string, Set<string>>();
+const botMemoryByPlayerKey = new Map<string, BotMemorySnapshot>();
 const pendingBotActionByRoomId = new Map<string, NodeJS.Timeout>();
 const DISCONNECT_GRACE_MS = 30_000;
 const MAX_CHAT_HISTORY = 80;
@@ -65,10 +67,15 @@ function registerBotPlayer(roomId: string, playerId: string): void {
   const roomBots = botPlayerIdsByRoomId.get(roomId) ?? new Set<string>();
   roomBots.add(playerId);
   botPlayerIdsByRoomId.set(roomId, roomBots);
+  botMemoryByPlayerKey.set(getPlayerKey(roomId, playerId), {
+    observedPrivateEffects: [],
+    observedCardFacts: [],
+  });
 }
 
 function unregisterBotPlayer(roomId: string, playerId: string): void {
   const roomBots = botPlayerIdsByRoomId.get(roomId);
+  botMemoryByPlayerKey.delete(getPlayerKey(roomId, playerId));
   if (!roomBots) return;
 
   roomBots.delete(playerId);
@@ -87,6 +94,7 @@ function destroyRoom(roomId: string): void {
     for (const participant of [...game.players, ...game.spectators]) {
       clearPendingRemoval(roomId, participant.id);
       activeSocketByPlayerKey.delete(getPlayerKey(roomId, participant.id));
+      botMemoryByPlayerKey.delete(getPlayerKey(roomId, participant.id));
     }
   }
 
@@ -94,6 +102,154 @@ function destroyRoom(roomId: string): void {
   botPlayerIdsByRoomId.delete(roomId);
   rooms.delete(roomId);
   roomChats.delete(roomId);
+}
+
+function getBotMemory(roomId: string, playerId: string): BotMemorySnapshot {
+  return botMemoryByPlayerKey.get(getPlayerKey(roomId, playerId)) ?? {
+    observedPrivateEffects: [],
+    observedCardFacts: [],
+  };
+}
+
+function appendBotMemory(roomId: string, playerId: string, effect: PrivateEffectPresentation): void {
+  const playerKey = getPlayerKey(roomId, playerId);
+  const current = getBotMemory(roomId, playerId);
+  const nextFacts = [...current.observedCardFacts, ...extractObservedCardFacts(effect)];
+
+  botMemoryByPlayerKey.set(playerKey, {
+    observedPrivateEffects: [...current.observedPrivateEffects, effect],
+    observedCardFacts: nextFacts,
+  });
+}
+
+function resetBotMemory(roomId: string, playerId: string): void {
+  botMemoryByPlayerKey.set(getPlayerKey(roomId, playerId), {
+    observedPrivateEffects: [],
+    observedCardFacts: [],
+  });
+}
+
+function resetRoomBotMemories(roomId: string): void {
+  const roomBots = botPlayerIdsByRoomId.get(roomId);
+  if (!roomBots) return;
+
+  for (const playerId of roomBots) {
+    resetBotMemory(roomId, playerId);
+  }
+}
+
+function makeObservedCardFact(
+  effect: PrivateEffectPresentation,
+  playerId: string,
+  playerName: string,
+  card: CardInstance | null,
+  location: BotObservedCardFact["location"],
+  source: BotObservedCardFact["source"],
+  note: string,
+): BotObservedCardFact {
+  return {
+    factId: `${effect.effectId}:${source}:${playerId}:${location}:${card?.instanceId ?? "none"}`,
+    effectId: effect.effectId,
+    viewerPlayerId: effect.viewerPlayerId,
+    actorPlayerId: effect.actorPlayerId,
+    playerId,
+    playerName,
+    card,
+    location,
+    source,
+    turnNumber: effect.turnNumber,
+    note,
+  };
+}
+
+function extractObservedCardFacts(effect: PrivateEffectPresentation): BotObservedCardFact[] {
+  switch (effect.kind) {
+    case "peek":
+      return [
+        makeObservedCardFact(
+          effect,
+          effect.targetPlayerId,
+          effect.targetPlayerName,
+          effect.revealedCard,
+          "hand",
+          "peek",
+          `${effect.targetPlayerName}'s hand was revealed to the viewer.`,
+        ),
+      ];
+    case "multi_peek":
+      return effect.seen.map((entry) =>
+        makeObservedCardFact(
+          effect,
+          entry.targetPlayerId,
+          entry.targetPlayerName,
+          entry.revealedCard,
+          "hand",
+          "multi_peek",
+          `${entry.targetPlayerName}'s hand was revealed to the viewer.`,
+        ),
+      );
+    case "compare":
+      return [
+        makeObservedCardFact(
+          effect,
+          effect.selfPlayerId,
+          effect.selfPlayerName,
+          effect.selfCard,
+          "hand",
+          "compare",
+          `${effect.selfPlayerName}'s compared hand was visible in a private comparison.`,
+        ),
+        makeObservedCardFact(
+          effect,
+          effect.opposingPlayerId,
+          effect.opposingPlayerName,
+          effect.opposingCard,
+          "hand",
+          "compare",
+          `${effect.opposingPlayerName}'s compared hand was visible in a private comparison.`,
+        ),
+      ];
+    case "cardinal_reveal":
+      return [
+        makeObservedCardFact(
+          effect,
+          effect.chosenPlayerId,
+          effect.chosenPlayerName,
+          effect.revealedCard,
+          "hand",
+          "cardinal_reveal",
+          `${effect.chosenPlayerName}'s swapped hand was revealed after Cardinal.`,
+        ),
+      ];
+    case "discard_reveal":
+      return [
+        makeObservedCardFact(
+          effect,
+          effect.targetPlayerId,
+          effect.targetPlayerName,
+          effect.discardedCard,
+          "discard",
+          "discard_reveal",
+          `${effect.targetPlayerName} discarded this card due to a forced discard.`,
+        ),
+      ];
+    case "guess":
+      return effect.revealedCards.map((card, index) =>
+        makeObservedCardFact(
+          effect,
+          effect.targetPlayerId,
+          effect.targetPlayerName,
+          card,
+          "discard",
+          "guess",
+          index === 0
+            ? `${effect.targetPlayerName}'s card was revealed after a guess action.`
+            : `${effect.targetPlayerName} revealed an additional card after a guess action.`,
+        ),
+      );
+    default:
+      return [];
+  }
 }
 
 function hasHumanParticipants(game: RoomGame): boolean {
@@ -125,6 +281,9 @@ function normalizeCreator(game: RoomGame): RoomGame {
 
 function emitPrivateEffects(roomId: string, gameEffects: ReturnType<typeof playCardAction>["privateEffects"]): void {
   for (const effect of gameEffects ?? []) {
+    if (isBotPlayer(roomId, effect.viewerPlayerId)) {
+      appendBotMemory(roomId, effect.viewerPlayerId, effect);
+    }
     io.to(getPlayerKey(roomId, effect.viewerPlayerId)).emit("action:effect", effect);
   }
 }
@@ -158,7 +317,7 @@ function runBotTurn(roomId: string): void {
 
   const cardinalActorId = game.round.pendingCardinalPeek?.actorPlayerId ?? null;
   if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
-    const targetPlayerId = chooseRandomCardinalPeekTarget(game, cardinalActorId);
+    const targetPlayerId = chooseRandomCardinalPeekTarget(toBotObservation(game, cardinalActorId, getBotMemory(roomId, cardinalActorId)));
     if (!targetPlayerId) return;
 
     const result = cardinalPeekAction(game, cardinalActorId, targetPlayerId);
@@ -173,7 +332,7 @@ function runBotTurn(roomId: string): void {
   const currentPlayerId = game.round.currentPlayerId;
   if (!currentPlayerId || !isBotPlayer(roomId, currentPlayerId)) return;
 
-  const decision = chooseRandomBotPlay(game, currentPlayerId);
+  const decision = chooseRandomBotPlay(toBotObservation(game, currentPlayerId, getBotMemory(roomId, currentPlayerId)));
   if (!decision) return;
 
   const result = playCardAction(game, currentPlayerId, decision.instanceId, {
@@ -560,6 +719,9 @@ io.on("connection", (socket) => {
     }
 
     const next = startRound(game);
+    if (next !== game && next.phase === "in_round") {
+      resetRoomBotMemories(normalizedRoomId);
+    }
     rooms.set(normalizedRoomId, next);
     emitRoomState(normalizedRoomId);
   });

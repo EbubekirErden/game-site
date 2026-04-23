@@ -189,6 +189,38 @@ export interface PlayerViewState extends PublicGameState {
   >;
 }
 
+export type BotObservedCardLocation = "hand" | "discard";
+export type BotObservedCardSource =
+  | "peek"
+  | "multi_peek"
+  | "compare"
+  | "cardinal_reveal"
+  | "discard_reveal"
+  | "guess";
+
+export interface BotObservedCardFact {
+  factId: string;
+  effectId: string;
+  viewerPlayerId: PlayerID;
+  actorPlayerId: PlayerID;
+  playerId: PlayerID;
+  playerName: string;
+  card: CardInstance | null;
+  location: BotObservedCardLocation;
+  source: BotObservedCardSource;
+  turnNumber: number;
+  note: string;
+}
+
+export interface BotMemorySnapshot {
+  observedPrivateEffects: PrivateEffectPresentation[];
+  observedCardFacts: BotObservedCardFact[];
+}
+
+export interface BotObservation extends PlayerViewState {
+  memory: BotMemorySnapshot;
+}
+
 export type PrivateEffectVisibility = "actor_only" | "actor_and_target" | "actor_and_targets";
 export type PrivateEffectDecision = "none" | "cardinal_peek_choice";
 

@@ -1,5 +1,4 @@
-import type { CardID, GameState, LoveLetterMode, PlayerID, PlayerState } from "@game-site/shared";
-import { validatePlayAction } from "@game-site/shared/rules";
+import type { BotObservation, CardID, LoveLetterMode, PlayerID, PlayerViewState, PublicPlayerState } from "@game-site/shared";
 
 export type BotPlayDecision = {
   instanceId: string;
@@ -8,20 +7,22 @@ export type BotPlayDecision = {
   guessedValue?: number;
 };
 
+type VisiblePlayer = PlayerViewState["players"][number];
+
 function sample<T>(items: T[]): T | null {
   if (items.length === 0) return null;
   return items[Math.floor(Math.random() * items.length)] ?? null;
 }
 
-function isTargetable(sourcePlayerId: PlayerID, target: PlayerState): boolean {
+function isTargetable(sourcePlayerId: PlayerID, target: Pick<PublicPlayerState, "id" | "status" | "protectedUntilNextTurn">): boolean {
   return target.status === "active" && (target.id === sourcePlayerId || !target.protectedUntilNextTurn);
 }
 
-function getTargetableOthers(players: PlayerState[], playerId: PlayerID): PlayerState[] {
+function getTargetableOthers(players: VisiblePlayer[], playerId: PlayerID): VisiblePlayer[] {
   return players.filter((player) => player.id !== playerId && isTargetable(playerId, player));
 }
 
-function getSelfAndTargetableOthers(players: PlayerState[], playerId: PlayerID): PlayerState[] {
+function getSelfAndTargetableOthers(players: VisiblePlayer[], playerId: PlayerID): VisiblePlayer[] {
   return players.filter((player) => player.status === "active" && (player.id === playerId || isTargetable(playerId, player)));
 }
 
@@ -53,10 +54,15 @@ function cardChoosesPlayers(cardId: CardID): boolean {
   ].includes(cardId);
 }
 
-function getLegalTargetSets(state: GameState, player: PlayerState, playedCardId: CardID): string[][] {
-  const forcedTargetPlayerId = state.round?.forcedTargetPlayerId ?? null;
-  const targetableOthers = getTargetableOthers(state.players, player.id).map((candidate) => candidate.id);
-  const selfAndTargetableOthers = getSelfAndTargetableOthers(state.players, player.id).map((candidate) => candidate.id);
+function getSelfPlayer(view: BotObservation): VisiblePlayer | null {
+  const self = view.players.find((player) => player.id === view.selfPlayerId);
+  return self ?? null;
+}
+
+function getLegalTargetSets(view: BotObservation, player: VisiblePlayer, playedCardId: CardID): string[][] {
+  const forcedTargetPlayerId = view.round?.forcedTargetPlayerId ?? null;
+  const targetableOthers = getTargetableOthers(view.players, player.id).map((candidate) => candidate.id);
+  const selfAndTargetableOthers = getSelfAndTargetableOthers(view.players, player.id).map((candidate) => candidate.id);
 
   let targetSets: string[][] = [];
 
@@ -107,13 +113,22 @@ function getGuessValues(mode: LoveLetterMode, cardId: CardID): number[] {
   return [];
 }
 
-function buildCandidateActions(state: GameState, player: PlayerState): BotPlayDecision[] {
+function mustPlayCountess(handCardIds: CardID[]): boolean {
+  return handCardIds.includes("countess") && (handCardIds.includes("prince") || handCardIds.includes("king"));
+}
+
+function buildCandidateActions(view: BotObservation, player: VisiblePlayer): BotPlayDecision[] {
   const decisions: BotPlayDecision[] = [];
+  const handCardIds = player.hand.map((card) => card.cardId);
 
   for (const card of player.hand) {
     const cardId = card.cardId;
-    const targetSets = getLegalTargetSets(state, player, cardId);
-    const guessValues = getGuessValues(state.mode, cardId);
+    if (mustPlayCountess(handCardIds) && cardId !== "countess") {
+      continue;
+    }
+
+    const targetSets = getLegalTargetSets(view, player, cardId);
+    const guessValues = getGuessValues(view.mode, cardId);
 
     if (cardId === "guard" || cardId === "bishop") {
       if (targetSets.length === 0) {
@@ -164,31 +179,31 @@ function buildCandidateActions(state: GameState, player: PlayerState): BotPlayDe
   return decisions;
 }
 
-export function chooseRandomBotPlay(state: GameState, playerId: PlayerID): BotPlayDecision | null {
-  if (state.phase !== "in_round" || !state.round) return null;
-
-  const player = state.players.find((candidate) => candidate.id === playerId);
-  if (!player || player.status !== "active" || state.round.currentPlayerId !== playerId) {
-    return null;
+export function listBotActionCandidates(view: BotObservation): BotPlayDecision[] {
+  if (view.phase !== "in_round" || !view.round || view.selfRole !== "player") {
+    return [];
   }
 
-  const candidates = buildCandidateActions(state, player).filter((decision) =>
-    validatePlayAction(state, {
-      type: "play_card",
-      playerId,
-      instanceId: decision.instanceId,
-      targetPlayerId: decision.targetPlayerId,
-      targetPlayerIds: decision.targetPlayerIds,
-      guessedValue: decision.guessedValue,
-    }).ok,
-  );
+  const player = getSelfPlayer(view);
+  if (!player || player.status !== "active" || view.round.currentPlayerId !== view.selfPlayerId) {
+    return [];
+  }
 
+  return buildCandidateActions(view, player);
+}
+
+export function chooseRandomBotPlay(view: BotObservation): BotPlayDecision | null {
+  const candidates = listBotActionCandidates(view);
   return sample(candidates);
 }
 
-export function chooseRandomCardinalPeekTarget(state: GameState, playerId: PlayerID): PlayerID | null {
-  const pending = state.round?.pendingCardinalPeek;
-  if (!pending || pending.actorPlayerId !== playerId) {
+export function chooseRandomCardinalPeekTarget(view: BotObservation): PlayerID | null {
+  if (view.selfRole !== "player") {
+    return null;
+  }
+
+  const pending = view.round?.pendingCardinalPeek;
+  if (!pending || pending.actorPlayerId !== view.selfPlayerId) {
     return null;
   }
 

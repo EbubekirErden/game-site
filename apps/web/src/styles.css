@@ -640,8 +640,8 @@ input::placeholder {
 }
 
 .info-drawer {
-  width: min(460px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(90vh - 48px);
   overflow-y: auto;
   background: rgba(24, 33, 43, 0.98);
   border: 1px solid #2f3d4f;
@@ -703,8 +703,8 @@ input::placeholder {
 
 .info-chip-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-direction: row;
+  gap: 8px;
 }
 
 .info-chip {
@@ -1665,3 +1665,4 @@ input::placeholder {
     max-height: 420px;
   }
 }
+

@@ -56,7 +56,7 @@ export const LOVE_LETTER_MODE_INFO: Record<
     ],
   },
   premium: {
-    label: "Premium",
+    label: "Extended",
     deckTotal: getCardsForMode("premium").reduce((total, card) => total + card.premiumCopies, 0),
     flow: [
       ...LOVE_LETTER_COMMON_FLOW,
@@ -69,7 +69,7 @@ export const LOVE_LETTER_MODE_INFO: Record<
       "Remove only 1 card face down at the start of the round. No extra face-up removals are used.",
       "The previous round winner starts the next round.",
     ],
-    tokenGoals: [{ label: "Any Player Count", tokens: 4 }],
+    tokenGoals: [{ label: "5-8 Players", tokens: 4 }],
   },
 };
 

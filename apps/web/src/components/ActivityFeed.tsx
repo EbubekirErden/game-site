@@ -65,20 +65,14 @@ function PlayerChip({ playerId, state }: { playerId: PlayerID; state: PlayerView
 
 function describeEvent(event: GameEvent, state: PlayerViewState): {
   itemClass: string;
-  badgeClass?: string;
-  badgeText?: string;
   icon: React.ReactNode;
-  title: string;
   detail: React.ReactNode;
 } {
   switch (event.type) {
     case "player_joined":
       return {
         itemClass: "is-info",
-        badgeClass: "is-info",
-        badgeText: "Lobby",
         icon: <UserPlus size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Player joined",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> sat down at the table and can now ready up.
@@ -88,10 +82,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "player_left":
       return {
         itemClass: "is-danger",
-        badgeClass: "is-danger",
-        badgeText: "Lobby",
         icon: <UserMinus size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Player left",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> left the room.
@@ -101,10 +92,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "spectator_joined":
       return {
         itemClass: "is-info",
-        badgeClass: "is-info",
-        badgeText: "Watch",
         icon: <Eye size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Spectator joined",
         detail: (
           <>
             <PlayerChip playerId={event.spectatorId} state={state} /> joined as a spectator and can enter the next lobby.
@@ -115,7 +103,6 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
       return {
         itemClass: "",
         icon: <UserMinus size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Spectator left",
         detail: (
           <>
             <PlayerChip playerId={event.spectatorId} state={state} /> stopped watching the room.
@@ -125,10 +112,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "player_ready_changed":
       return {
         itemClass: event.isReady ? "is-success" : "",
-        badgeClass: event.isReady ? "is-success" : undefined,
-        badgeText: event.isReady ? "Ready" : undefined,
         icon: <Sparkles size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Ready status updated",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> is now {event.isReady ? "ready for the next round" : "waiting to ready up"}.
@@ -138,19 +122,13 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "round_started":
       return {
         itemClass: "is-success",
-        badgeClass: "is-success",
-        badgeText: "Round",
         icon: <Sparkles size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Round started",
         detail: "A fresh round is underway. Everyone has drawn in, and the active player is deciding what to play.",
       };
     case "card_drawn":
       return {
         itemClass: "is-info",
-        badgeClass: "is-info",
-        badgeText: "Draw",
         icon: <Eye size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Card drawn",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> drew from the deck and now has two cards to choose from.
@@ -160,10 +138,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "card_played":
       return {
         itemClass: "",
-        badgeClass: undefined,
-        badgeText: undefined,
         icon: <ArrowRightLeft size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: `${getCardDef(event.cardId).name} played`,
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> discarded <strong>{getCardDef(event.cardId).name}</strong> and resolved its public effect.
@@ -173,10 +148,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "card_guessed":
       return {
         itemClass: "is-danger",
-        badgeClass: "is-danger",
-        badgeText: getCardDef(event.sourceCardId ?? "guard").name,
         icon: <Swords size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Guard guess declared",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> named <strong>{event.guessedValue}</strong> against <PlayerChip playerId={event.targetPlayerId} state={state} />.
@@ -186,10 +158,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "card_compared":
       return {
         itemClass: "is-info",
-        badgeClass: "is-info",
-        badgeText: getCardDef(event.sourceCardId ?? "baron").name,
         icon: <Swords size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Secret comparison",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> and <PlayerChip playerId={event.targetPlayerId} state={state} /> secretly compared hands. Only those two players saw the cards.
@@ -199,10 +168,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "card_swapped":
       return {
         itemClass: "is-info",
-        badgeClass: "is-info",
-        badgeText: getCardDef(event.sourceCardId ?? "king").name,
         icon: <ArrowRightLeft size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Hands swapped",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> traded hands with <PlayerChip playerId={event.targetPlayerId} state={state} />. The new hands remain hidden from everyone else.
@@ -212,10 +178,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "card_seen":
       return {
         itemClass: "is-info",
-        badgeClass: "is-info",
-        badgeText: getCardDef(event.sourceCardId ?? "priest").name,
         icon: <Eye size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Private look resolved",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> privately inspected <PlayerChip playerId={event.targetPlayerId} state={state} />&apos;s hand.
@@ -225,10 +188,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "player_protected":
       return {
         itemClass: "is-protected",
-        badgeClass: "is-protected",
-        badgeText: getCardDef(event.sourceCardId ?? "handmaid").name,
         icon: <Shield size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Protection gained",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> cannot be targeted by other players until their next turn begins.
@@ -238,10 +198,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "player_eliminated":
       return {
         itemClass: "is-danger",
-        badgeClass: "is-danger",
-        badgeText: event.sourceCardId ? getCardDef(event.sourceCardId).name : "Out",
         icon: <UserMinus size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Player eliminated",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> is out of the round{event.reason ? ` because ${event.reason}.` : "."}
@@ -251,10 +208,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "round_ended":
       return {
         itemClass: "is-success",
-        badgeClass: "is-success",
-        badgeText: "Winner",
         icon: <Trophy size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Round completed",
         detail: (
           <>
             Remaining hands were revealed. Winner{event.winnerIds.length === 1 ? "" : "s"}:{" "}
@@ -270,10 +224,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "token_awarded":
       return {
         itemClass: "is-gold",
-        badgeClass: "is-gold",
-        badgeText: "Token",
         icon: <Heart size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Affection gained",
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> now has <strong>{event.tokens}</strong> token{event.tokens === 1 ? "" : "s"} of affection.
@@ -283,10 +234,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
     case "match_ended":
       return {
         itemClass: "is-success",
-        badgeClass: "is-success",
-        badgeText: "Match",
         icon: <Trophy size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Match finished",
         detail: (
           <>
             Final winner{event.winnerIds.length === 1 ? "" : "s"}:{" "}
@@ -303,7 +251,6 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
       return {
         itemClass: "",
         icon: <Hourglass size={16} strokeWidth={2.2} aria-hidden="true" />,
-        title: "Table update",
         detail: formatEvent(event as GameEvent, state),
       };
   }
@@ -322,14 +269,6 @@ export function ActivityFeed({ events, state, emptyText = "No actions yet." }: A
           <article key={`${event.type}-${index}`} className={`log-item ${meta.itemClass}`}>
             <div className="log-icon">{meta.icon}</div>
             <div className="log-copy">
-              <div className="log-meta-row">
-                <strong className="log-title">{meta.title}</strong>
-                {meta.badgeText ? (
-                  <span className={`log-badge ${meta.badgeClass ?? ""}`}>
-                    {meta.badgeText}
-                  </span>
-                ) : null}
-              </div>
               <p className="log-detail">{meta.detail}</p>
             </div>
           </article>

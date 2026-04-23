@@ -864,6 +864,7 @@ input::placeholder {
   display: flex;
   gap: 24px;
   justify-content: center;
+  margin-bottom: 16px;
 }
 
 .stat-box {
@@ -1509,7 +1510,7 @@ input::placeholder {
 .activity-feed { 
   display: flex; 
   flex-direction: column; 
-  gap: 10px;
+  gap: 6px;
   overflow-y: auto; 
   padding-right: 8px; 
   flex: 1; 
@@ -1518,25 +1519,26 @@ input::placeholder {
 }
 .log-item { 
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px; 
-  border-radius: 12px; 
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px; 
+  border-radius: 8px; 
   background: rgba(15, 20, 26, 0.5); 
-  color: #c9d1d9; font-size: 0.9rem; 
-  border-left: 3px solid #3d4c5f; 
+  color: #c9d1d9;
+  font-size: 0.84rem; 
+  border-left: 2px solid #3d4c5f; 
   height: fit-content;
   animation: panel-fade-in 180ms ease-out;
 }
 
 .log-icon {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.05);
   color: #d8e6f5;
 }
@@ -1546,23 +1548,10 @@ input::placeholder {
   flex: 1;
 }
 
-.log-meta-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.log-title {
-  color: #f3f8fe;
-  font-size: 0.92rem;
-}
-
 .log-detail {
   margin: 0;
   color: #b8c5d2;
-  line-height: 1.45;
+  line-height: 1.35;
 }
 
 .log-item.is-danger {
@@ -1590,57 +1579,14 @@ input::placeholder {
   background: rgba(91, 31, 69, 0.28);
 }
 
-.log-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.log-badge.is-danger {
-  background: rgba(231, 76, 60, 0.18);
-  color: #ff9f96;
-  border: 1px solid rgba(231, 76, 60, 0.35);
-}
-
-.log-badge.is-success {
-  background: rgba(46, 204, 113, 0.18);
-  color: #a9f3c6;
-  border: 1px solid rgba(46, 204, 113, 0.35);
-}
-
-.log-badge.is-gold {
-  background: rgba(241, 196, 15, 0.18);
-  color: #ffe08a;
-  border: 1px solid rgba(241, 196, 15, 0.35);
-}
-
-.log-badge.is-info {
-  background: rgba(74, 163, 255, 0.18);
-  color: #b4dcff;
-  border: 1px solid rgba(74, 163, 255, 0.35);
-}
-
-.log-badge.is-protected {
-  background: rgba(255, 154, 213, 0.18);
-  color: #ffc7e9;
-  border: 1px solid rgba(255, 154, 213, 0.35);
-}
-
 .feed-player-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem 0.55rem;
-  margin: 0 0.15rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
+  padding: 0.12rem 0.42rem;
+  margin: 0 0.08rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
   font-weight: 800;
   background: var(--player-chip-background);
   border: 1px solid var(--player-chip-border);
@@ -1657,7 +1603,7 @@ input::placeholder {
 .chat-message-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 4px;
   min-height: 0;
   flex: 1;
   overflow-y: auto;
@@ -1671,15 +1617,16 @@ input::placeholder {
 }
 
 .chat-message {
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(15, 20, 26, 0.48);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 6px 10px 7px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
 }
 
 .chat-message.is-self {
-  background: rgba(31, 111, 235, 0.12);
-  border-color: rgba(31, 111, 235, 0.24);
+  background: linear-gradient(90deg, rgba(31, 111, 235, 0.1), transparent 70%);
+  border-bottom-color: rgba(31, 111, 235, 0.18);
 }
 
 .chat-message-meta {
@@ -1687,18 +1634,18 @@ input::placeholder {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
 
 .chat-player-name {
   display: inline-flex;
   align-items: center;
-  padding: 0.18rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.76rem;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.72rem;
   font-weight: 800;
-  background: var(--chat-player-background);
-  border: 1px solid var(--chat-player-border);
+  background: transparent;
+  border: 0;
   color: var(--chat-player-text);
   white-space: nowrap;
 }
@@ -1712,8 +1659,8 @@ input::placeholder {
 .chat-message p {
   margin: 0;
   color: #d8e2ec;
-  font-size: 0.9rem;
-  line-height: 1.4;
+  font-size: 0.84rem;
+  line-height: 1.32;
   overflow-wrap: anywhere;
 }
 

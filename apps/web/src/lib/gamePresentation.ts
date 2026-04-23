@@ -5,9 +5,12 @@ export function playerNameById(state: PlayerViewState, playerId: PlayerID): stri
   const activeName = state.players.find((player) => player.id === playerId)?.name;
   if (activeName) return activeName;
 
+  const spectatorName = state.spectators.find((spectator) => spectator.id === playerId)?.name;
+  if (spectatorName) return spectatorName;
+
   const historicalName = [...state.log].reverse().find((event) =>
-    ("playerId" in event) &&
-    event.playerId === playerId &&
+    ((("playerId" in event) && event.playerId === playerId) ||
+      (("spectatorId" in event) && event.spectatorId === playerId)) &&
     ("name" in event),
   );
 
@@ -73,6 +76,10 @@ export function formatEvent(event: GameEvent, state: PlayerViewState): string {
       return `${event.name} joined the room.`;
     case "player_left":
       return `${event.name} left the room.`;
+    case "spectator_joined":
+      return `${event.name} joined as a spectator.`;
+    case "spectator_left":
+      return `${event.name} stopped spectating.`;
     case "player_ready_changed":
       return `${playerNameById(state, event.playerId)} is now ${event.isReady ? "ready" : "not ready"}.`;
     case "round_started":

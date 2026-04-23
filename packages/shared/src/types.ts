@@ -83,6 +83,11 @@ export interface PlayerState {
   isReady: boolean;
 }
 
+export interface SpectatorState {
+  id: PlayerID;
+  name: string;
+}
+
 export interface PublicPlayerState {
   id: PlayerID;
   name: string;
@@ -122,12 +127,15 @@ export interface GameState {
   round: RoundState | null;
   roundWinnerIds: PlayerID[];
   matchWinnerIds: PlayerID[];
+  spectators: SpectatorState[];
   log: GameEvent[];
 }
 
 export type GameEvent =
   | { type: "player_joined"; playerId: PlayerID; name: string }
   | { type: "player_left"; playerId: PlayerID; name: string }
+  | { type: "spectator_joined"; spectatorId: PlayerID; name: string }
+  | { type: "spectator_left"; spectatorId: PlayerID; name: string }
   | { type: "player_ready_changed"; playerId: PlayerID; isReady: boolean }
   | { type: "round_started" }
   | { type: "card_drawn"; playerId: PlayerID }
@@ -167,11 +175,13 @@ export interface PublicGameState {
   } | null;
   roundWinnerIds: PlayerID[];
   matchWinnerIds: PlayerID[];
+  spectators: SpectatorState[];
   log: GameEvent[];
 }
 
 export interface PlayerViewState extends PublicGameState {
   selfPlayerId: PlayerID;
+  selfRole: "player" | "spectator";
   players: Array<
     PublicPlayerState & {
       hand: CardInstance[];

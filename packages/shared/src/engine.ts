@@ -262,6 +262,7 @@ export function createGame(roomId: RoomID, creatorId: PlayerID, mode: LoveLetter
     round: null,
     roundWinnerIds: [],
     matchWinnerIds: [],
+    spectators: [],
     log: [],
   };
 }
@@ -269,6 +270,7 @@ export function createGame(roomId: RoomID, creatorId: PlayerID, mode: LoveLetter
 export function addPlayer(state: GameState, id: string, name: string): GameState {
   if (state.phase !== "lobby") return state;
   if (state.players.some((player) => player.id === id)) return state;
+  if (state.spectators.some((spectator) => spectator.id === id)) return state;
 
   const player: PlayerState = {
     id,
@@ -285,6 +287,28 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
     ...state,
     players: [...state.players, player],
     log: [...state.log, { type: "player_joined", playerId: id, name }],
+  };
+}
+
+export function addSpectator(state: GameState, id: string, name: string): GameState {
+  if (state.players.some((player) => player.id === id)) return state;
+  if (state.spectators.some((spectator) => spectator.id === id)) return state;
+
+  return {
+    ...state,
+    spectators: [...state.spectators, { id, name }],
+    log: [...state.log, { type: "spectator_joined", spectatorId: id, name }],
+  };
+}
+
+export function removeSpectator(state: GameState, spectatorId: PlayerID): GameState {
+  const leavingSpectator = state.spectators.find((spectator) => spectator.id === spectatorId);
+  if (!leavingSpectator) return state;
+
+  return {
+    ...state,
+    spectators: state.spectators.filter((spectator) => spectator.id !== spectatorId),
+    log: [...state.log, { type: "spectator_left", spectatorId: leavingSpectator.id, name: leavingSpectator.name }],
   };
 }
 
@@ -400,6 +424,47 @@ export function removePlayer(state: GameState, playerId: PlayerID): GameState {
   }
 
   return nextState;
+}
+
+export function resetMatchToLobby(state: GameState): GameState {
+  if (state.phase !== "match_over") return state;
+
+  const promotedPlayers: PlayerState[] = state.spectators
+    .filter((spectator) => !state.players.some((player) => player.id === spectator.id))
+    .map((spectator) => ({
+      id: spectator.id,
+      name: spectator.name,
+      hand: [],
+      discardPile: [],
+      status: "active" as const,
+      protectedUntilNextTurn: false,
+      tokens: 0,
+      isReady: false,
+    }));
+
+  return {
+    ...state,
+    phase: "lobby",
+    creatorId: state.players.some((player) => player.id === state.creatorId)
+      ? state.creatorId
+      : state.players[0]?.id ?? promotedPlayers[0]?.id ?? state.creatorId,
+    players: [
+      ...state.players.map((player) => ({
+        ...player,
+        hand: [],
+        discardPile: [],
+        status: "active" as const,
+        protectedUntilNextTurn: false,
+        tokens: 0,
+        isReady: false,
+      })),
+      ...promotedPlayers,
+    ],
+    round: null,
+    roundWinnerIds: [],
+    matchWinnerIds: [],
+    spectators: [],
+  };
 }
 
 export function startRound(state: GameState): GameState {
@@ -613,14 +678,18 @@ export function toPublicGameState(state: GameState): PublicGameState {
       : null,
     roundWinnerIds: [...state.roundWinnerIds],
     matchWinnerIds: [...state.matchWinnerIds],
+    spectators: [...state.spectators],
     log: [...state.log],
   };
 }
 
 export function toPlayerViewState(state: GameState, selfPlayerId: PlayerID): PlayerViewState {
+  const selfRole = state.players.some((player) => player.id === selfPlayerId) ? "player" : "spectator";
+
   return {
     ...toPublicGameState(state),
     selfPlayerId,
+    selfRole,
     players: state.players.map((player) => ({
       id: player.id,
       name: player.name,

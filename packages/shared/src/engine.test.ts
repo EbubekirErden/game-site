@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addPlayer, createGame, playCardAction, removePlayer, setPlayerReady, startRound } from "./engine.js";
+import { addPlayer, addSpectator, createGame, playCardAction, removePlayer, resetMatchToLobby, setPlayerReady, startRound, toPlayerViewState } from "./engine.js";
 import type { CardInstance, GameState, LoveLetterMode, PlayerID } from "./types.js";
 
 function makeCard(cardId: CardInstance["cardId"], instanceId: string): CardInstance {
@@ -183,6 +183,40 @@ test("next round waits for everyone to confirm ready again", () => {
   assert.equal(restarted.phase, "in_round");
   assert.ok(restarted.round);
   assert.equal(restarted.players.every((player) => player.isReady === false), true);
+});
+
+test("late arrivals can spectate without seeing private hands or affecting readiness", () => {
+  let state = setupStartedGame(["Ava", "Ben"]);
+
+  state = addSpectator(state, "p3", "Cara");
+  const spectatorView = toPlayerViewState(state, "p3");
+
+  assert.equal(spectatorView.selfRole, "spectator");
+  assert.equal(spectatorView.spectators.length, 1);
+  assert.equal(spectatorView.players.every((player) => player.hand.length === 0), true);
+  assert.equal(setPlayerReady(state, "p3", true), state);
+});
+
+test("returning a finished match to lobby promotes spectators for the next game", () => {
+  let state = setupStartedGame(["Ava", "Ben"]);
+  state = addSpectator(state, "p3", "Cara");
+  state = {
+    ...state,
+    phase: "match_over",
+    matchWinnerIds: ["p1"],
+    players: state.players.map((player) => ({
+      ...player,
+      tokens: player.id === "p1" ? 7 : 2,
+    })),
+  };
+
+  const lobby = resetMatchToLobby(state);
+
+  assert.equal(lobby.phase, "lobby");
+  assert.deepEqual(lobby.players.map((player) => player.id), ["p1", "p2", "p3"]);
+  assert.equal(lobby.spectators.length, 0);
+  assert.equal(lobby.players.every((player) => player.tokens === 0 && !player.isReady && player.hand.length === 0), true);
+  assert.equal(toPlayerViewState(lobby, "p3").selfRole, "player");
 });
 
 test("disconnecting the last opponent awards the round and returns the room to lobby", () => {

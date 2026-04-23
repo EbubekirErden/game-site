@@ -36,6 +36,9 @@ function getPlayerSwatch(state: PlayerViewState, playerId: PlayerID) {
   const playerIndex = state.players.findIndex((player) => player.id === playerId);
   if (playerIndex >= 0) return PLAYER_SWATCHES[playerIndex % PLAYER_SWATCHES.length];
 
+  const spectatorIndex = state.spectators.findIndex((spectator) => spectator.id === playerId);
+  if (spectatorIndex >= 0) return PLAYER_SWATCHES[(state.players.length + spectatorIndex) % PLAYER_SWATCHES.length];
+
   const hashed = [...playerId].reduce((total, char) => total + char.charCodeAt(0), 0);
   return PLAYER_SWATCHES[hashed % PLAYER_SWATCHES.length];
 }
@@ -92,6 +95,30 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
         detail: (
           <>
             <PlayerChip playerId={event.playerId} state={state} /> left the room.
+          </>
+        ),
+      };
+    case "spectator_joined":
+      return {
+        itemClass: "is-info",
+        badgeClass: "is-info",
+        badgeText: "Watch",
+        icon: <Eye size={16} strokeWidth={2.2} aria-hidden="true" />,
+        title: "Spectator joined",
+        detail: (
+          <>
+            <PlayerChip playerId={event.spectatorId} state={state} /> joined as a spectator and can enter the next lobby.
+          </>
+        ),
+      };
+    case "spectator_left":
+      return {
+        itemClass: "",
+        icon: <UserMinus size={16} strokeWidth={2.2} aria-hidden="true" />,
+        title: "Spectator left",
+        detail: (
+          <>
+            <PlayerChip playerId={event.spectatorId} state={state} /> stopped watching the room.
           </>
         ),
       };

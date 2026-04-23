@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { Server } from "socket.io";
 
-import { addPlayer, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
+import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -43,8 +43,10 @@ function removePlayerFromRoom(roomId: string, playerId: string): void {
   const game = rooms.get(roomId);
   if (!game) return;
 
-  const next = removePlayer(game, playerId);
-  if (next.players.length === 0) {
+  const next = game.players.some((player) => player.id === playerId)
+    ? removePlayer(game, playerId)
+    : removeSpectator(game, playerId);
+  if (next.players.length === 0 && next.spectators.length === 0) {
     rooms.delete(roomId);
     return;
   }
@@ -103,6 +105,9 @@ function emitRoomState(roomId: string): void {
   for (const player of game.players) {
     io.to(getPlayerKey(roomId, player.id)).emit("state", toPlayerViewState(game, player.id));
   }
+  for (const spectator of game.spectators) {
+    io.to(getPlayerKey(roomId, spectator.id)).emit("state", toPlayerViewState(game, spectator.id));
+  }
 }
 
 io.on("connection", (socket) => {
@@ -136,13 +141,12 @@ io.on("connection", (socket) => {
     }
 
     const existingPlayer = game.players.find((player) => player.id === normalizedPlayerId);
-    if (!existingPlayer && game.phase !== "lobby") {
-      socket.emit("action:error", { reason: "game_already_started" });
-      respond?.({ ok: false, reason: "game_already_started" });
-      return;
-    }
-
-    const next = existingPlayer ? game : addPlayer(game, normalizedPlayerId, name);
+    const existingSpectator = game.spectators.find((spectator) => spectator.id === normalizedPlayerId);
+    const next = existingPlayer || existingSpectator
+      ? game
+      : game.phase === "lobby"
+        ? addPlayer(game, normalizedPlayerId, name)
+        : addSpectator(game, normalizedPlayerId, name);
     rooms.set(normalizedRoomId, next);
     bindSocketToPlayer(socket.id, normalizedRoomId, normalizedPlayerId);
     socket.join(normalizedRoomId);
@@ -163,7 +167,8 @@ io.on("connection", (socket) => {
     }
 
     const existingPlayer = game.players.find((player) => player.id === normalizedPlayerId);
-    if (!existingPlayer) {
+    const existingSpectator = game.spectators.find((spectator) => spectator.id === normalizedPlayerId);
+    if (!existingPlayer && !existingSpectator) {
       respond?.({ ok: false, reason: "player_not_found" });
       return;
     }
@@ -262,6 +267,30 @@ io.on("connection", (socket) => {
     }
 
     const next = startRound(game);
+    rooms.set(normalizedRoomId, next);
+    emitRoomState(normalizedRoomId);
+  });
+
+  socket.on("match:return-to-lobby", ({ roomId }) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      socket.emit("action:error", { reason: "room_not_found" });
+      return;
+    }
+
+    const game = rooms.get(normalizedRoomId);
+    if (!game) {
+      socket.emit("action:error", { reason: "room_not_found" });
+      return;
+    }
+
+    if (game.creatorId !== binding.playerId) {
+      socket.emit("action:error", { reason: "only_creator_can_start" });
+      return;
+    }
+
+    const next = resetMatchToLobby(game);
     rooms.set(normalizedRoomId, next);
     emitRoomState(normalizedRoomId);
   });

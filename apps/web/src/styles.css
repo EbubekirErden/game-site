@@ -898,6 +898,11 @@ input::placeholder {
 
 .player-row.is-eliminated { opacity: 0.5; filter: grayscale(1); }
 
+.player-row.is-spectator {
+  background: rgba(76, 201, 240, 0.08);
+  border-color: rgba(76, 201, 240, 0.22);
+}
+
 .player-row-info { display: flex; flex-direction: column; font-size: 0.95rem; }
 .player-row-info strong { color: #fff; }
 .player-name-row {
@@ -928,6 +933,11 @@ input::placeholder {
   box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
 }
 .mini-ready-pill.ready { background: #2ecc71; box-shadow: 0 0 8px rgba(46, 204, 113, 0.4); }
+
+.spectator-badge {
+  border-color: rgba(76, 201, 240, 0.4);
+  color: #9be7ff;
+}
 
 .full-width { width: 100%; justify-content: center; text-align: center; }
 .mt-2 { margin-top: 8px; }

@@ -91,7 +91,12 @@ function writePersistedSession(session: PersistedSession): void {
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
 }
 
-function getPhaseMessage(phase: PlayerViewState["phase"]): string {
+function getPhaseMessage(phase: PlayerViewState["phase"], selfRole: PlayerViewState["selfRole"]): string {
+  if (selfRole === "spectator") {
+    if (phase === "match_over") return "Match over. The host can return everyone to the lobby.";
+    return "You are watching as a spectator. You can join as a player when the match returns to lobby.";
+  }
+
   if (phase === "lobby") {
     return "Room ready. Players can toggle ready.";
   }
@@ -190,7 +195,7 @@ export function App() {
       setJoinCode(nextState.roomId);
       setSavedRoomId(nextState.roomId);
       reconnectAttemptRef.current = null;
-      setMessage(getPhaseMessage(nextState.phase));
+      setMessage(getPhaseMessage(nextState.phase, nextState.selfRole));
       if (location.pathname !== `/games/love-letter/rooms/${nextState.roomId}`) {
         navigate(`/games/love-letter/rooms/${nextState.roomId}`, { replace: true });
       }
@@ -349,6 +354,13 @@ export function App() {
     socket.emit("round:start", { roomId: state.roomId });
   }
 
+  function handleReturnToLobby() {
+    if (!state) return;
+
+    setActiveEffectPresentation(null);
+    socket.emit("match:return-to-lobby", { roomId: state.roomId });
+  }
+
   function handlePlayCard(): Promise<boolean> {
     if (!state) return Promise.resolve(false);
 
@@ -497,11 +509,11 @@ export function App() {
               onToggleReady={handleToggleReady}
               onSetMode={handleSetMode}
               onStartRound={handleStartRound}
+              onReturnToLobby={handleReturnToLobby}
               onPlayCard={handlePlayCard}
               onDismissEffect={handleDismissEffect}
               onCardinalPeek={handleCardinalPeek}
               onLeaveRoom={() => handleLeaveRoom(false)}
-              onBackToGames={() => handleLeaveRoom(true)}
             />
           ) : routeRoomId && savedRoomId === routeRoomId && Boolean(playerName.trim()) ? (
             <main className="hub-layout">

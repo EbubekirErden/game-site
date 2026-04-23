@@ -36,11 +36,11 @@ type RoomPageProps = {
   onToggleReady: (isReady: boolean) => void;
   onSetMode: (mode: LoveLetterMode) => void;
   onStartRound: () => void;
+  onReturnToLobby: () => void;
   onPlayCard: () => Promise<boolean>;
   onDismissEffect: () => void;
   onCardinalPeek: (targetPlayerId: string) => Promise<boolean>;
   onLeaveRoom: () => void;
-  onBackToGames: () => void;
 };
 
 export function RoomPage({
@@ -57,16 +57,17 @@ export function RoomPage({
   onToggleReady,
   onSetMode,
   onStartRound,
+  onReturnToLobby,
   onPlayCard,
   onDismissEffect,
   onCardinalPeek,
   onLeaveRoom,
-  onBackToGames,
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
   const [copied, setCopied] = React.useState(false); // Copy button state
 
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
+  const selfSpectator = state.selfRole === "spectator";
   const isCreator = state.creatorId === state.selfPlayerId;
   const selectedCard = self?.hand?.find((card) => card.instanceId === selectedInstanceId) ?? null;
   const selectedCardDef = selectedCard ? getCardDef(selectedCard.cardId) : null;
@@ -322,6 +323,7 @@ export function RoomPage({
           <h1>{gameTitle}</h1>
           <span className="phase-badge">{showLobby ? "Waiting Room" : state.phase?.replaceAll("_", " ")}</span>
           <span className="phase-badge">{state.mode === "premium" ? "Premium (5-8 people)" : "Classic"}</span>
+          {selfSpectator ? <span className="phase-badge spectator-badge">Spectator</span> : null}
           <button
             type="button"
             className="room-code-badge room-code-button copyable"
@@ -383,7 +385,27 @@ export function RoomPage({
             </div>
           </section>
 
-          {showLobby && (
+          {state.spectators.length > 0 && (
+            <section className="game-panel slim-panel">
+              <h3>Spectators</h3>
+              <div className="player-list-slim">
+                {state.spectators.map((spectator) => (
+                  <div key={spectator.id} className={`player-row is-spectator ${spectator.id === state.selfPlayerId ? "is-self" : ""}`}>
+                    <div className="player-row-info">
+                      <strong className="player-name-row">
+                        <span>{spectator.name}</span>
+                      </strong>
+                      <span className="player-status-text">
+                        <span className="status-inline">watching</span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {showLobby && !selfSpectator && (
             <section className="game-panel slim-panel">
               <h3>Your Status</h3>
               <button
@@ -415,6 +437,8 @@ export function RoomPage({
               <p className="muted-text" style={{ marginTop: 0 }}>
                 {isCreator
                   ? "Choose the deck for this room before starting the round."
+                  : selfSpectator
+                    ? "You can watch this match and will join the next lobby as a player."
                   : `${playerNameById(state, state.creatorId)} can change the mode before the round starts.`}
               </p>
               <div className="mode-picker-options">
@@ -465,12 +489,14 @@ export function RoomPage({
             <div className="game-panel center-lobby">
               <h2>Waiting for players...</h2>
               <p>
-                Need at least 2 players. Everyone must be ready to start.
+                Need at least 2 players. Every player must be ready to start.
                 {state.mode === "premium" ? " Premium is intended for 5 to 8 people." : ""}
+                {state.spectators.length > 0 ? " Spectators will become players after a finished match returns here." : ""}
               </p>
               <div className="lobby-stats">
                 <div className="stat-box"><strong>{playerCount}</strong> <span>Players</span></div>
                 <div className="stat-box"><strong>{readyCount}</strong> <span>Ready</span></div>
+                {state.spectators.length > 0 ? <div className="stat-box"><strong>{state.spectators.length}</strong> <span>Watching</span></div> : null}
               </div>
               <p className="error-text">{message}</p>
             </div>
@@ -506,14 +532,18 @@ export function RoomPage({
                 </div>
 
                 <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "32px", justifyContent: "center", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className={`primary-button ${self?.isReady ? "is-ready-btn" : ""}`}
-                    onClick={() => onToggleReady(!self?.isReady)}
-                    style={{ width: "220px" }}
-                  >
-                    {self?.isReady ? "Ready Confirmed" : "Confirm Ready"}
-                  </button>
+                  {selfSpectator ? (
+                    <p className="muted-text">You are watching this match and can join when the host returns the room to lobby.</p>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`primary-button ${self?.isReady ? "is-ready-btn" : ""}`}
+                      onClick={() => onToggleReady(!self?.isReady)}
+                      style={{ width: "220px" }}
+                    >
+                      {self?.isReady ? "Ready Confirmed" : "Confirm Ready"}
+                    </button>
+                  )}
                   {isCreator ? (
                     <button
                       type="button"
@@ -596,13 +626,17 @@ export function RoomPage({
               </div>
 
               <p className="muted-text" style={{ marginTop: "24px" }}>
-                Start a fresh game when you want to play another full match.
+                Return to the lobby to reset tokens, let players leave safely, and bring current spectators into the next game.
               </p>
 
               <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "24px", justifyContent: "center", flexWrap: "wrap" }}>
-                <button type="button" className="primary-button" onClick={onBackToGames}>
-                  Start New Game
-                </button>
+                {isCreator ? (
+                  <button type="button" className="primary-button" onClick={onReturnToLobby}>
+                    Return to Lobby
+                  </button>
+                ) : (
+                  <p className="muted-text">Host can return this room to the lobby.</p>
+                )}
                 <button type="button" className="danger-button" onClick={onLeaveRoom}>
                   Leave Room
                 </button>
@@ -619,10 +653,13 @@ export function RoomPage({
                 {playStage === "select_card" ? (
                   <div className="focus-hand-area">
                     <div className="player-area-header">
-                      <h3>{isMyTurn ? "Your Turn - Select a Card" : "Your Hand"}</h3>
+                      <h3>{selfSpectator ? "Spectator View" : isMyTurn ? "Your Turn - Select a Card" : "Your Hand"}</h3>
                     </div>
-                    <div className="hand-cards-large">
-                      {self?.hand?.map((card) => (
+                    {selfSpectator ? (
+                      <p className="muted-text">You can follow the public table, discards, turns, and log. Private hands stay hidden.</p>
+                    ) : (
+                      <div className="hand-cards-large">
+                        {self?.hand?.map((card) => (
                         <div className="hand-card-wrapper" key={card.instanceId}>
                           <CardView
                             card={card}
@@ -637,8 +674,9 @@ export function RoomPage({
                             </button>
                           )}
                         </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="focus-action-area">

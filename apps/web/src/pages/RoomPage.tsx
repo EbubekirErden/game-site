@@ -14,9 +14,9 @@ import {
 } from "lucide-react";
 
 import { getCardDef } from "@game-site/shared";
-import type { LoveLetterMode, PlayerViewState, PrivateEffectPresentation } from "@game-site/shared";
+import type { GameEvent, LoveLetterMode, PlayerViewState, PrivateEffectPresentation } from "@game-site/shared";
 
-import { ActivityFeed } from "../components/ActivityFeed.js";
+import { ActivityEventRow, ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
 import { DiscardResolutionOverlay } from "../components/DiscardResolutionOverlay.js";
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
@@ -37,6 +37,7 @@ type RoomPageProps = {
   onGuessedValueChange: (value: string) => void;
   onToggleReady: (isReady: boolean) => void;
   onSetMode: (mode: LoveLetterMode) => void;
+  onAddBot: () => Promise<boolean>;
   onStartRound: () => void;
   onReturnToLobby: () => void;
   onPlayCard: () => Promise<boolean>;
@@ -46,6 +47,14 @@ type RoomPageProps = {
   onSendChatMessage: (text: string) => Promise<boolean>;
   onLeaveRoom: () => void;
 };
+
+type LogAnnouncement = {
+  key: string;
+  event: GameEvent;
+};
+
+const LOG_ANNOUNCEMENT_HOLD_MS = 1800;
+const LOG_ANNOUNCEMENT_EXIT_MS = 550;
 
 export function RoomPage({
   state,
@@ -60,6 +69,7 @@ export function RoomPage({
   onGuessedValueChange,
   onToggleReady,
   onSetMode,
+  onAddBot,
   onStartRound,
   onReturnToLobby,
   onPlayCard,
@@ -71,6 +81,10 @@ export function RoomPage({
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
   const [copied, setCopied] = React.useState(false); // Copy button state
+  const [announcementQueue, setAnnouncementQueue] = React.useState<LogAnnouncement[]>([]);
+  const [activeAnnouncement, setActiveAnnouncement] = React.useState<LogAnnouncement | null>(null);
+  const [announcementPhase, setAnnouncementPhase] = React.useState<"enter" | "exit">("enter");
+  const processedLogCountRef = React.useRef(state.log.length);
 
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
   const selfSpectator = state.selfRole === "spectator";
@@ -203,6 +217,64 @@ export function RoomPage({
     if (!isMyTurn || isCardinalDecisionPending) setPlayStage("select_card");
   }, [isCardinalDecisionPending, isMyTurn, state.round?.turnNumber, state.phase]);
 
+  React.useEffect(() => {
+    processedLogCountRef.current = state.log.length;
+    setAnnouncementQueue([]);
+    setActiveAnnouncement(null);
+    setAnnouncementPhase("enter");
+  }, [state.roomId]);
+
+  React.useEffect(() => {
+    const processedCount = processedLogCountRef.current;
+    if (state.log.length < processedCount) {
+      processedLogCountRef.current = state.log.length;
+      setAnnouncementQueue([]);
+      setActiveAnnouncement(null);
+      setAnnouncementPhase("enter");
+      return;
+    }
+
+    if (state.log.length === processedCount) {
+      return;
+    }
+
+    const appendedEvents = state.log.slice(processedCount).map((event, offset) => ({
+      key: `${processedCount + offset}-${event.type}`,
+      event,
+    }));
+
+    processedLogCountRef.current = state.log.length;
+    setAnnouncementQueue((current) => [...current, ...appendedEvents]);
+  }, [state.log]);
+
+  React.useEffect(() => {
+    if (activeAnnouncement || announcementQueue.length === 0) {
+      return;
+    }
+
+    setActiveAnnouncement(announcementQueue[0] ?? null);
+    setAnnouncementQueue((current) => current.slice(1));
+    setAnnouncementPhase("enter");
+  }, [activeAnnouncement, announcementQueue]);
+
+  React.useEffect(() => {
+    if (!activeAnnouncement) return;
+
+    const exitTimeout = window.setTimeout(() => {
+      setAnnouncementPhase("exit");
+    }, LOG_ANNOUNCEMENT_HOLD_MS);
+
+    const completeTimeout = window.setTimeout(() => {
+      setActiveAnnouncement(null);
+      setAnnouncementPhase("enter");
+    }, LOG_ANNOUNCEMENT_HOLD_MS + LOG_ANNOUNCEMENT_EXIT_MS);
+
+    return () => {
+      window.clearTimeout(exitTimeout);
+      window.clearTimeout(completeTimeout);
+    };
+  }, [activeAnnouncement]);
+
   const handleInitiatePlay = async () => {
     if (targetNeeded || guessNeeded) {
       setPlayStage("setup_action");
@@ -258,6 +330,12 @@ export function RoomPage({
     targetNeeded &&
     !hasSelectableTarget,
   );
+  const visibleLogEvents = React.useMemo(() => {
+    const pendingAnnouncements = announcementQueue.length + (activeAnnouncement ? 1 : 0);
+    return pendingAnnouncements > 0
+      ? state.log.slice(0, Math.max(0, state.log.length - pendingAnnouncements))
+      : state.log;
+  }, [activeAnnouncement, announcementQueue.length, state.log]);
   const mustPlayCountess = Boolean(
     selectedCardDef &&
     selectedCardDef.id !== "countess" &&
@@ -324,6 +402,11 @@ export function RoomPage({
 
   return (
     <main className="table-layout">
+      {activeAnnouncement ? (
+        <div className={`table-log-announcement is-${announcementPhase}`} aria-live="polite" aria-atomic="true">
+          <ActivityEventRow event={activeAnnouncement.event} state={state} className="log-item-announcement" />
+        </div>
+      ) : null}
       <header className="table-topbar">
         <div className="topbar-info">
           <h1>{gameTitle}</h1>
@@ -465,6 +548,18 @@ export function RoomPage({
                   Extended (5-8 people)
                 </button>
               </div>
+            </section>
+          )}
+
+          {showLobby && isCreator && (
+            <section className="game-panel slim-panel">
+              <h3>Bots</h3>
+              <p className="muted-text" style={{ marginTop: 0 }}>
+                Add a server-controlled player that makes fully random legal moves.
+              </p>
+              <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
+                Add Random Bot
+              </button>
             </section>
           )}
 
@@ -838,7 +933,7 @@ export function RoomPage({
         <aside className="table-sidebar table-right-sidebar">
           <section className="game-panel activity-panel">
             <h3>Activity Log</h3>
-            <ActivityFeed events={state.log || []} state={state} />
+            <ActivityFeed events={visibleLogEvents} state={state} />
           </section>
           <RoomChat messages={chatMessages} state={state} onSendMessage={onSendChatMessage} />
         </aside>

@@ -386,6 +386,29 @@ export function App() {
     socket.emit("match:return-to-lobby", { roomId: state.roomId });
   }
 
+  function handleAddBot(): Promise<boolean> {
+    if (!state) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit(
+        "room:add-bot",
+        {
+          roomId: state.roomId,
+        },
+        (response: { ok: boolean; reason?: string }) => {
+          if (!response.ok) {
+            setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+            resolve(false);
+            return;
+          }
+
+          setMessage("Random bot added to the room.");
+          resolve(true);
+        },
+      );
+    });
+  }
+
   function handlePlayCard(): Promise<boolean> {
     if (!state) return Promise.resolve(false);
 
@@ -557,6 +580,7 @@ export function App() {
               onGuessedValueChange={setGuessedValue}
               onToggleReady={handleToggleReady}
               onSetMode={handleSetMode}
+              onAddBot={handleAddBot}
               onStartRound={handleStartRound}
               onReturnToLobby={handleReturnToLobby}
               onPlayCard={handlePlayCard}

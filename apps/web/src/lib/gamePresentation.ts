@@ -35,8 +35,12 @@ export function formatErrorReason(reason: string): string {
       return "You need at least 2 players, and everyone in the room must be ready.";
     case "only_creator_can_change_mode":
       return "Only the room creator can change the mode.";
+    case "only_creator_can_manage_bots":
+      return "Only the room creator can add bots.";
     case "cannot_change_mode_now":
       return "The mode can only be changed while the room is still in the lobby.";
+    case "cannot_add_bot_now":
+      return "Bots can only be added while the room is still in the lobby.";
     case "game_already_started":
       return "That room already started, so new players cannot join right now.";
     case "player_not_found":

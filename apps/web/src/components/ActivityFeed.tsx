@@ -256,24 +256,34 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
   }
 }
 
+type ActivityEventRowProps = {
+  event: GameEvent;
+  state: PlayerViewState;
+  className?: string;
+};
+
+export function ActivityEventRow({ event, state, className = "" }: ActivityEventRowProps) {
+  const meta = describeEvent(event, state);
+
+  return (
+    <article className={`log-item ${meta.itemClass} ${className}`.trim()}>
+      <div className="log-icon">{meta.icon}</div>
+      <div className="log-copy">
+        <p className="log-detail">{meta.detail}</p>
+      </div>
+    </article>
+  );
+}
+
 export function ActivityFeed({ events, state, emptyText = "No actions yet." }: ActivityFeedProps) {
   const recentEvents = events.slice(-14).reverse();
 
   return (
     <div className="activity-feed">
       {recentEvents.length === 0 ? <span className="empty-label">{emptyText}</span> : null}
-      {recentEvents.map((event, index) => {
-        const meta = describeEvent(event, state);
-
-        return (
-          <article key={`${event.type}-${index}`} className={`log-item ${meta.itemClass}`}>
-            <div className="log-icon">{meta.icon}</div>
-            <div className="log-copy">
-              <p className="log-detail">{meta.detail}</p>
-            </div>
-          </article>
-        );
-      })}
+      {recentEvents.map((event, index) => (
+        <ActivityEventRow key={`${event.type}-${index}`} event={event} state={state} />
+      ))}
     </div>
   );
 }

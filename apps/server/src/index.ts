@@ -1,22 +1,28 @@
 import { createServer } from "node:http";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { Server } from "socket.io";
 
 import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
+import { chooseRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
-const rooms = new Map<string, ReturnType<typeof createGame>>();
+type RoomGame = ReturnType<typeof createGame>;
+
+const rooms = new Map<string, RoomGame>();
 const roomChats = new Map<string, ChatMessage[]>();
 const playerBySocketId = new Map<string, { roomId: string; playerId: string }>();
 const activeSocketByPlayerKey = new Map<string, string>();
 const pendingRemovalByPlayerKey = new Map<string, NodeJS.Timeout>();
+const botPlayerIdsByRoomId = new Map<string, Set<string>>();
+const pendingBotActionByRoomId = new Map<string, NodeJS.Timeout>();
 const DISCONNECT_GRACE_MS = 30_000;
 const MAX_CHAT_HISTORY = 80;
+const BOT_ACTION_DELAY_MS = 3_000;
 
 type ChatMessage = {
   id: string;
@@ -47,23 +53,196 @@ function bindSocketToPlayer(socketId: string, roomId: string, playerId: string):
   clearPendingRemoval(roomId, playerId);
 }
 
+function clearPendingBotAction(roomId: string): void {
+  const timeout = pendingBotActionByRoomId.get(roomId);
+  if (!timeout) return;
+
+  clearTimeout(timeout);
+  pendingBotActionByRoomId.delete(roomId);
+}
+
+function registerBotPlayer(roomId: string, playerId: string): void {
+  const roomBots = botPlayerIdsByRoomId.get(roomId) ?? new Set<string>();
+  roomBots.add(playerId);
+  botPlayerIdsByRoomId.set(roomId, roomBots);
+}
+
+function unregisterBotPlayer(roomId: string, playerId: string): void {
+  const roomBots = botPlayerIdsByRoomId.get(roomId);
+  if (!roomBots) return;
+
+  roomBots.delete(playerId);
+  if (roomBots.size === 0) {
+    botPlayerIdsByRoomId.delete(roomId);
+  }
+}
+
+function isBotPlayer(roomId: string, playerId: string): boolean {
+  return botPlayerIdsByRoomId.get(roomId)?.has(playerId) ?? false;
+}
+
+function destroyRoom(roomId: string): void {
+  const game = rooms.get(roomId);
+  if (game) {
+    for (const participant of [...game.players, ...game.spectators]) {
+      clearPendingRemoval(roomId, participant.id);
+      activeSocketByPlayerKey.delete(getPlayerKey(roomId, participant.id));
+    }
+  }
+
+  clearPendingBotAction(roomId);
+  botPlayerIdsByRoomId.delete(roomId);
+  rooms.delete(roomId);
+  roomChats.delete(roomId);
+}
+
+function hasHumanParticipants(game: RoomGame): boolean {
+  return (
+    game.players.some((player) => !isBotPlayer(game.roomId, player.id)) ||
+    game.spectators.some((spectator) => !isBotPlayer(game.roomId, spectator.id))
+  );
+}
+
+function getPreferredCreatorId(game: RoomGame): string {
+  return (
+    game.players.find((player) => !isBotPlayer(game.roomId, player.id))?.id ??
+    game.spectators.find((spectator) => !isBotPlayer(game.roomId, spectator.id))?.id ??
+    game.creatorId
+  );
+}
+
+function normalizeCreator(game: RoomGame): RoomGame {
+  const preferredCreatorId = getPreferredCreatorId(game);
+  if (preferredCreatorId === game.creatorId) {
+    return game;
+  }
+
+  return {
+    ...game,
+    creatorId: preferredCreatorId,
+  };
+}
+
+function emitPrivateEffects(roomId: string, gameEffects: ReturnType<typeof playCardAction>["privateEffects"]): void {
+  for (const effect of gameEffects ?? []) {
+    io.to(getPlayerKey(roomId, effect.viewerPlayerId)).emit("action:effect", effect);
+  }
+}
+
+function ensureBotsReady(roomId: string): void {
+  const game = rooms.get(roomId);
+  if (!game || (game.phase !== "lobby" && game.phase !== "round_over")) {
+    return;
+  }
+
+  let next = game;
+  let changed = false;
+  for (const player of game.players) {
+    if (isBotPlayer(roomId, player.id) && !player.isReady) {
+      next = setPlayerReady(next, player.id, true);
+      changed = true;
+    }
+  }
+
+  if (!changed) return;
+
+  rooms.set(roomId, normalizeCreator(next));
+  emitRoomState(roomId);
+}
+
+function runBotTurn(roomId: string): void {
+  pendingBotActionByRoomId.delete(roomId);
+
+  const game = rooms.get(roomId);
+  if (!game || game.phase !== "in_round" || !game.round) return;
+
+  const cardinalActorId = game.round.pendingCardinalPeek?.actorPlayerId ?? null;
+  if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
+    const targetPlayerId = chooseRandomCardinalPeekTarget(game, cardinalActorId);
+    if (!targetPlayerId) return;
+
+    const result = cardinalPeekAction(game, cardinalActorId, targetPlayerId);
+    if (!result.ok || !result.state) return;
+
+    rooms.set(roomId, normalizeCreator(result.state));
+    emitRoomState(roomId);
+    emitPrivateEffects(roomId, result.privateEffects);
+    return;
+  }
+
+  const currentPlayerId = game.round.currentPlayerId;
+  if (!currentPlayerId || !isBotPlayer(roomId, currentPlayerId)) return;
+
+  const decision = chooseRandomBotPlay(game, currentPlayerId);
+  if (!decision) return;
+
+  const result = playCardAction(game, currentPlayerId, decision.instanceId, {
+    targetPlayerId: decision.targetPlayerId,
+    targetPlayerIds: decision.targetPlayerIds,
+    guessedValue: decision.guessedValue,
+  });
+
+  if (!result.ok || !result.state) return;
+
+  rooms.set(roomId, normalizeCreator(result.state));
+  emitRoomState(roomId);
+  emitPrivateEffects(roomId, result.privateEffects);
+}
+
+function scheduleBotAction(roomId: string): void {
+  clearPendingBotAction(roomId);
+
+  const game = rooms.get(roomId);
+  if (!game) return;
+
+  if (game.phase === "lobby" || game.phase === "round_over") {
+    ensureBotsReady(roomId);
+    return;
+  }
+
+  if (game.phase !== "in_round" || !game.round) return;
+
+  const actingBotId = game.round.pendingCardinalPeek?.actorPlayerId ?? game.round.currentPlayerId;
+  if (!actingBotId || !isBotPlayer(roomId, actingBotId)) {
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    runBotTurn(roomId);
+  }, BOT_ACTION_DELAY_MS);
+
+  pendingBotActionByRoomId.set(roomId, timeout);
+}
+
 function removePlayerFromRoom(roomId: string, playerId: string): void {
   clearPendingRemoval(roomId, playerId);
   activeSocketByPlayerKey.delete(getPlayerKey(roomId, playerId));
 
   const game = rooms.get(roomId);
-  if (!game) return;
+  if (!game) {
+    unregisterBotPlayer(roomId, playerId);
+    return;
+  }
 
   const next = game.players.some((player) => player.id === playerId)
     ? removePlayer(game, playerId)
     : removeSpectator(game, playerId);
-  if (next.players.length === 0 && next.spectators.length === 0) {
-    rooms.delete(roomId);
-    roomChats.delete(roomId);
+  if (isBotPlayer(roomId, playerId)) {
+    unregisterBotPlayer(roomId, playerId);
+  }
+
+  const normalizedNext = normalizeCreator(next);
+  if (normalizedNext.players.length === 0 && normalizedNext.spectators.length === 0) {
+    destroyRoom(roomId);
     return;
   }
 
-  rooms.set(roomId, next);
+  if (!hasHumanParticipants(normalizedNext)) {
+    destroyRoom(roomId);
+    return;
+  }
+
+  rooms.set(roomId, normalizedNext);
   emitRoomState(roomId);
 }
 
@@ -120,9 +299,11 @@ function emitRoomState(roomId: string): void {
   for (const spectator of game.spectators) {
     io.to(getPlayerKey(roomId, spectator.id)).emit("state", toPlayerViewState(game, spectator.id));
   }
+
+  scheduleBotAction(roomId);
 }
 
-function getParticipantName(game: ReturnType<typeof createGame>, playerId: string): string | null {
+function getParticipantName(game: RoomGame, playerId: string): string | null {
   return (
     game.players.find((player) => player.id === playerId)?.name ??
     game.spectators.find((spectator) => spectator.id === playerId)?.name ??
@@ -132,6 +313,21 @@ function getParticipantName(game: ReturnType<typeof createGame>, playerId: strin
 
 function emitChatHistory(roomId: string, playerId: string): void {
   io.to(getPlayerKey(roomId, playerId)).emit("chat:history", roomChats.get(roomId) ?? []);
+}
+
+function addRandomBot(game: RoomGame): RoomGame {
+  const botPlayerId = `bot-${randomUUID()}`;
+  const botName = getBotDisplayName([
+    ...game.players.map((player) => player.name),
+    ...game.spectators.map((spectator) => spectator.name),
+  ]);
+  const withBot = addPlayer(game, botPlayerId, botName);
+  if (withBot === game) {
+    return game;
+  }
+
+  registerBotPlayer(game.roomId, botPlayerId);
+  return normalizeCreator(setPlayerReady(withBot, botPlayerId, true));
 }
 
 io.on("connection", (socket) => {
@@ -290,6 +486,36 @@ io.on("connection", (socket) => {
     emitRoomState(normalizedRoomId);
   });
 
+  socket.on("room:add-bot", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const game = rooms.get(normalizedRoomId);
+    if (!game) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    if (game.creatorId !== binding.playerId) {
+      respond?.({ ok: false, reason: "only_creator_can_manage_bots" });
+      return;
+    }
+
+    if (game.phase !== "lobby") {
+      respond?.({ ok: false, reason: "cannot_add_bot_now" });
+      return;
+    }
+
+    const next = addRandomBot(game);
+    rooms.set(normalizedRoomId, next);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
   socket.on("room:leave", ({ roomId }) => {
     const binding = playerBySocketId.get(socket.id);
     playerBySocketId.delete(socket.id);
@@ -391,10 +617,7 @@ io.on("connection", (socket) => {
     rooms.set(normalizedRoomId, result.state);
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
-
-    for (const effect of result.privateEffects ?? []) {
-      io.to(getPlayerKey(normalizedRoomId, effect.viewerPlayerId)).emit("action:effect", effect);
-    }
+    emitPrivateEffects(normalizedRoomId, result.privateEffects);
   });
 
   socket.on("cardinal:peek", ({ roomId, targetPlayerId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
@@ -422,10 +645,7 @@ io.on("connection", (socket) => {
     rooms.set(normalizedRoomId, result.state);
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
-
-    for (const effect of result.privateEffects ?? []) {
-      io.to(getPlayerKey(normalizedRoomId, effect.viewerPlayerId)).emit("action:effect", effect);
-    }
+    emitPrivateEffects(normalizedRoomId, result.privateEffects);
   });
 
   socket.on("disconnect", () => {

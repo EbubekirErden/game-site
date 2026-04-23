@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { Server } from "socket.io";
 
-import { addPlayer, canStartReadyRound, createGame, playCardAction, removePlayer, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
+import { addPlayer, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -191,6 +191,33 @@ io.on("connection", (socket) => {
     emitRoomState(normalizedRoomId);
   });
 
+  socket.on("room:set-mode", ({ roomId, mode }) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      socket.emit("action:error", { reason: "room_not_found" });
+      return;
+    }
+
+    const game = rooms.get(normalizedRoomId);
+    if (!game) return;
+
+    if (game.creatorId !== binding.playerId) {
+      socket.emit("action:error", { reason: "only_creator_can_change_mode" });
+      return;
+    }
+
+    if (game.phase !== "lobby") {
+      socket.emit("action:error", { reason: "cannot_change_mode_now" });
+      return;
+    }
+
+    const normalizedMode = mode === "premium" ? "premium" : "classic";
+    const next = setGameMode(game, binding.playerId, normalizedMode);
+    rooms.set(normalizedRoomId, next);
+    emitRoomState(normalizedRoomId);
+  });
+
   socket.on("room:leave", ({ roomId }) => {
     const binding = playerBySocketId.get(socket.id);
     playerBySocketId.delete(socket.id);
@@ -239,7 +266,7 @@ io.on("connection", (socket) => {
     emitRoomState(normalizedRoomId);
   });
 
-  socket.on("card:play", ({ roomId, instanceId, targetPlayerId, targetPlayerIds, guessedValue, peekPlayerId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+  socket.on("card:play", ({ roomId, instanceId, targetPlayerId, targetPlayerIds, guessedValue }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
     const binding = getBoundPlayer(socket.id);
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     if (!binding || binding.roomId !== normalizedRoomId) {
@@ -257,7 +284,6 @@ io.on("connection", (socket) => {
       targetPlayerId,
       targetPlayerIds,
       guessedValue,
-      peekPlayerId,
     });
 
     if (!result.ok || !result.state) {
@@ -270,8 +296,39 @@ io.on("connection", (socket) => {
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
 
-    for (const note of result.privateNotes ?? []) {
-      io.to(getPlayerKey(normalizedRoomId, note.playerId)).emit("action:note", note);
+    for (const effect of result.privateEffects ?? []) {
+      io.to(getPlayerKey(normalizedRoomId, effect.viewerPlayerId)).emit("action:effect", effect);
+    }
+  });
+
+  socket.on("cardinal:peek", ({ roomId, targetPlayerId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const game = rooms.get(normalizedRoomId);
+    if (!game) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const result = cardinalPeekAction(game, binding.playerId, String(targetPlayerId ?? "").trim());
+
+    if (!result.ok || !result.state) {
+      socket.emit("action:error", { reason: result.reason ?? "invalid_action" });
+      respond?.({ ok: false, reason: result.reason ?? "invalid_action" });
+      return;
+    }
+
+    rooms.set(normalizedRoomId, result.state);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+
+    for (const effect of result.privateEffects ?? []) {
+      io.to(getPlayerKey(normalizedRoomId, effect.viewerPlayerId)).emit("action:effect", effect);
     }
   });
 

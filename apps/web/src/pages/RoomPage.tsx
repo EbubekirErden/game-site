@@ -9,15 +9,16 @@ import {
   Rocket,
   Shield,
   Sparkles,
+  Swords,
   Trophy,
-  X,
 } from "lucide-react";
 
 import { getCardDef } from "@game-site/shared";
-import type { CardID, PlayerViewState } from "@game-site/shared";
+import type { LoveLetterMode, PlayerViewState, PrivateEffectPresentation } from "@game-site/shared";
 
 import { ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
+import { DiscardResolutionOverlay } from "../components/DiscardResolutionOverlay.js";
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
 import { cardNamesByValue, playerNameById } from "../lib/gamePresentation.js";
 
@@ -25,38 +26,19 @@ type RoomPageProps = {
   state: PlayerViewState;
   gameTitle: string;
   message: string;
-  lastNote:
-    | {
-        kind: "peek";
-        text: string;
-        cardId: CardID | null;
-      }
-    | {
-        kind: "compare";
-        text: string;
-        ownCardId: CardID | null;
-        otherCardId: CardID | null;
-      }
-    | {
-        kind: "multi_peek";
-        text: string;
-        seen: Array<{
-          targetPlayerId: string;
-          cardId: CardID | null;
-        }>;
-      }
-    | null;
+  activeEffectPresentation: PrivateEffectPresentation | null;
   selectedInstanceId: string | null;
   selectedTargetPlayerIds: string[];
-  peekPlayerId: string;
   guessedValue: string;
   onSelectCard: (instanceId: string | null) => void;
   onTargetPlayerIdsChange: (playerIds: string[]) => void;
-  onPeekPlayerChange: (playerId: string) => void;
   onGuessedValueChange: (value: string) => void;
   onToggleReady: (isReady: boolean) => void;
+  onSetMode: (mode: LoveLetterMode) => void;
   onStartRound: () => void;
   onPlayCard: () => Promise<boolean>;
+  onDismissEffect: () => void;
+  onCardinalPeek: (targetPlayerId: string) => Promise<boolean>;
   onLeaveRoom: () => void;
   onBackToGames: () => void;
 };
@@ -65,24 +47,23 @@ export function RoomPage({
   state,
   gameTitle,
   message,
-  lastNote,
+  activeEffectPresentation,
   selectedInstanceId,
   selectedTargetPlayerIds,
-  peekPlayerId,
   guessedValue,
   onSelectCard,
   onTargetPlayerIdsChange,
-  onPeekPlayerChange,
   onGuessedValueChange,
   onToggleReady,
+  onSetMode,
   onStartRound,
   onPlayCard,
+  onDismissEffect,
+  onCardinalPeek,
   onLeaveRoom,
   onBackToGames,
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
-  const [dismissedNote, setDismissedNote] = React.useState<string | null>(null);
-  const [noteTurnNumber, setNoteTurnNumber] = React.useState<number | null>(null);
   const [copied, setCopied] = React.useState(false); // Copy button state
 
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
@@ -105,7 +86,7 @@ export function RoomPage({
     "Round over. Everyone can confirm ready for the next round.",
     "Match over.",
   ].includes(message) ? message : "";
-  const statusTone = statusMessage.startsWith("Played ")
+  const statusTone = statusMessage.startsWith("Discarded ")
     ? "success"
     : statusMessage.startsWith("Rejoining room") || statusMessage.startsWith("Connection lost")
       ? "info"
@@ -118,6 +99,7 @@ export function RoomPage({
     "bishop",
     "priest",
     "baron",
+    "handmaid",
     "sycophant",
     "prince",
     "king",
@@ -172,10 +154,11 @@ export function RoomPage({
       case "bishop":
       case "priest":
       case "baron":
+      case "handmaid":
       case "king":
       case "dowager_queen":
       case "jester":
-        sets = targetableOthers.map((id) => [id]);
+        sets = cardId === "handmaid" ? [[self.id]] : targetableOthers.map((id) => [id]);
         break;
       case "sycophant":
       case "prince":
@@ -207,25 +190,11 @@ export function RoomPage({
     () => legalTargetSets.some((targetSet) => sameTargetSet(targetSet, selectedTargetPlayerIds)),
     [legalTargetSets, sameTargetSet, selectedTargetPlayerIds],
   );
+  const isCardinalDecisionPending = Boolean(state.round?.pendingCardinalPeek);
 
   React.useEffect(() => {
-    if (!isMyTurn) setPlayStage("select_card");
-  }, [isMyTurn, state.round?.turnNumber, state.phase]);
-
-  React.useEffect(() => {
-    setDismissedNote(null);
-    setNoteTurnNumber(lastNote ? (state.round?.turnNumber ?? null) : null);
-  }, [lastNote]);
-
-  React.useEffect(() => {
-    if (!lastNote || dismissedNote === lastNote.text) return;
-    if (state.phase !== "in_round") return;
-    if (state.round?.currentPlayerId !== state.selfPlayerId) return;
-    if (noteTurnNumber === null) return;
-    if (state.round.turnNumber <= noteTurnNumber) return;
-
-    setDismissedNote(lastNote.text);
-  }, [dismissedNote, lastNote, noteTurnNumber, state.phase, state.round?.currentPlayerId, state.round?.turnNumber, state.selfPlayerId]);
+    if (!isMyTurn || isCardinalDecisionPending) setPlayStage("select_card");
+  }, [isCardinalDecisionPending, isMyTurn, state.round?.turnNumber, state.phase]);
 
   const handleInitiatePlay = async () => {
     if (targetNeeded || guessNeeded) {
@@ -252,10 +221,16 @@ export function RoomPage({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const activePrivateNote = lastNote && dismissedNote !== lastNote.text ? lastNote : null;
   const jesterTargetedPlayerIds = React.useMemo(
     () => new Set((state.round?.jesterAssignments ?? []).map((assignment) => assignment.targetPlayerId)),
     [state.round?.jesterAssignments],
+  );
+  const selfReminderCards = React.useMemo(
+    () =>
+      (self?.discardPile ?? [])
+        .map((card) => card.cardId)
+        .filter((cardId): cardId is "count" | "constable" => cardId === "count" || cardId === "constable"),
+    [self?.discardPile],
   );
   const targetOptions = React.useMemo(
     () =>
@@ -300,6 +275,10 @@ export function RoomPage({
     }
 
     if (multiTargetNeeded) {
+      if (selectedTargetPlayerIds.length === 0 && legalTargetSets.length === 1) {
+        onTargetPlayerIdsChange(legalTargetSets[0]!);
+        return;
+      }
       if (selectedTargetPlayerIds.length > 0 && !isTargetSelectionValid) {
         onTargetPlayerIdsChange([]);
       }
@@ -319,19 +298,6 @@ export function RoomPage({
       onTargetPlayerIdsChange(defaultTargetId ? [defaultTargetId] : []);
     }
   }, [isTargetSelectionValid, legalTargetSets, multiTargetNeeded, onTargetPlayerIdsChange, sameTargetSet, selectedTargetPlayerIds, targetNeeded, targetPlayerId]);
-
-  React.useEffect(() => {
-    if (cardId !== "cardinal") {
-      if (peekPlayerId) {
-        onPeekPlayerChange("");
-      }
-      return;
-    }
-
-    if (peekPlayerId && !selectedTargetPlayerIds.includes(peekPlayerId)) {
-      onPeekPlayerChange("");
-    }
-  }, [cardId, onPeekPlayerChange, peekPlayerId, selectedTargetPlayerIds]);
 
   const handleTargetToggle = (playerId: string) => {
     if (!multiTargetNeeded) {
@@ -401,7 +367,10 @@ export function RoomPage({
                         {player.tokens || 0}
                       </span>
                       {forcedTargetPlayerId === player.id ? (
-                        <span className="status-inline">Sycophant</span>
+                        <span className="status-inline">
+                          <Swords size={12} strokeWidth={2.1} aria-hidden="true" />
+                          Marked
+                        </span>
                       ) : null}
                       {jesterTargetedPlayerIds.has(player.id) ? (
                         <span className="status-inline">Jester</span>
@@ -440,53 +409,53 @@ export function RoomPage({
             </section>
           )}
 
-          {activePrivateNote && (
-            <section className="game-panel alert-panel">
-              <div className="alert-header">
-                <h3>Result / Info</h3>
-                <button type="button" className="dismiss-btn" onClick={() => setDismissedNote(activePrivateNote.text)} aria-label="Dismiss note">
-                  <X size={16} strokeWidth={2.3} aria-hidden="true" />
+          {showLobby && (
+            <section className="game-panel slim-panel">
+              <h3>Room Mode</h3>
+              <p className="muted-text" style={{ marginTop: 0 }}>
+                {isCreator
+                  ? "Choose the deck for this room before starting the round."
+                  : `${playerNameById(state, state.creatorId)} can change the mode before the round starts.`}
+              </p>
+              <div className="mode-picker-options">
+                <button
+                  type="button"
+                  className={`mode-pill ${state.mode === "classic" ? "is-selected" : ""}`}
+                  onClick={() => onSetMode("classic")}
+                  disabled={!isCreator}
+                >
+                  Classic (2-4 people)
+                </button>
+                <button
+                  type="button"
+                  className={`mode-pill ${state.mode === "premium" ? "is-selected" : ""}`}
+                  onClick={() => onSetMode("premium")}
+                  disabled={!isCreator}
+                >
+                  Extended (5-8 people)
                 </button>
               </div>
-              <p>{activePrivateNote.text}</p>
-              {activePrivateNote.kind === "compare" ? (
-                <div className="comparison-reveal">
-                  <div className="comparison-card-lane comparison-card-lane-self">
-                    <span className="comparison-card-label">Your card</span>
-                    {activePrivateNote.ownCardId ? (
-                      <CardView card={{ instanceId: "compare-self", cardId: activePrivateNote.ownCardId }} compact />
-                    ) : (
-                      <div className="comparison-empty-card">No card revealed</div>
-                    )}
-                  </div>
-                  <div className="comparison-divider">vs</div>
-                  <div className="comparison-card-lane comparison-card-lane-opponent">
-                    <span className="comparison-card-label">Opposing card</span>
-                    {activePrivateNote.otherCardId ? (
-                      <CardView card={{ instanceId: "compare-other", cardId: activePrivateNote.otherCardId }} compact />
-                    ) : (
-                      <div className="comparison-empty-card">No card revealed</div>
-                    )}
-                  </div>
-                </div>
-              ) : activePrivateNote.kind === "multi_peek" ? (
-                <div className="discard-spread discard-spread-tight">
-                  {activePrivateNote.seen.map((entry) => (
-                    <div key={entry.targetPlayerId} className="comparison-card-lane comparison-card-lane-self">
-                      <span className="comparison-card-label">{playerNameById(state, entry.targetPlayerId)}</span>
-                      {entry.cardId ? (
-                        <CardView card={{ instanceId: `peek-${entry.targetPlayerId}`, cardId: entry.cardId }} compact />
-                      ) : (
-                        <div className="comparison-empty-card">No card revealed</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : activePrivateNote.cardId ? (
-                <div className="private-card-showcase">
-                  <CardView card={{ instanceId: "temp", cardId: activePrivateNote.cardId }} compact />
-                </div>
-              ) : null}
+            </section>
+          )}
+
+          {!showLobby && selfReminderCards.includes("constable") && (
+            <section className="game-panel effect-reminder-panel">
+              <h3>Constable</h3>
+              <p>If you are eliminated while Constable stays in your discard pile, you gain a token.</p>
+            </section>
+          )}
+
+          {!showLobby && selfReminderCards.includes("count") && (
+            <section className="game-panel effect-reminder-panel">
+              <h3>Count</h3>
+              <p>If you reach round end, each Count in your discard pile adds to your final hand strength.</p>
+            </section>
+          )}
+
+          {!showLobby && state.round?.jesterAssignments.some((assignment) => assignment.playerId === state.selfPlayerId) && (
+            <section className="game-panel effect-reminder-panel">
+              <h3>Jester</h3>
+              <p>If your chosen player wins this round, you gain a token too.</p>
             </section>
           )}
         </aside>
@@ -664,7 +633,7 @@ export function RoomPage({
                           />
                           {card.instanceId === selectedInstanceId && isMyTurn && (
                             <button type="button" className="primary-button inline-play-btn" onClick={handleInitiatePlay}>
-                              Play Card
+                              Discard
                             </button>
                           )}
                         </div>
@@ -678,7 +647,7 @@ export function RoomPage({
                         <ArrowLeft size={16} strokeWidth={2.2} aria-hidden="true" />
                         Back to Hand
                       </button>
-                      <h3>You are playing: {selectedCardDef?.name ?? "a card"}</h3>
+                      <h3>You are discarding: {selectedCardDef?.name ?? "a card"}</h3>
                     </div>
                     
                     <div className="play-stage-horizontal">
@@ -704,6 +673,9 @@ export function RoomPage({
                             <label className="dark-label">
                               {multiTargetNeeded ? "1. Choose Target Players" : "1. Choose a Target"}
                             </label>
+                            {cardId === "cardinal" ? (
+                              <p className="muted-text">Cardinal needs exactly 2 players, and you may include yourself.</p>
+                            ) : null}
                             {targetHintText && <p className="muted-text">{targetHintText}</p>}
                             <div className="selection-grid">
                               {targetOptions.map(({ player, selectable, protectedByHandmaid }) => (
@@ -743,29 +715,12 @@ export function RoomPage({
                           </div>
                         )}
 
-                        {cardId === "cardinal" && selectedTargetPlayerIds.length === 2 ? (
-                          <div className="selection-group">
-                            <label className="dark-label">3. Optional Peek After Swap</label>
-                            <div className="selection-grid">
-                              {selectedTargetPlayerIds.map((id) => (
-                                <button
-                                  key={id}
-                                  type="button"
-                                  className={`grid-btn ${peekPlayerId === id ? "selected" : ""}`}
-                                  onClick={() => onPeekPlayerChange(peekPlayerId === id ? "" : id)}
-                                >
-                                  <span>{playerNameById(state, id)}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-
                         <button
                           type="button"
                           className="primary-button play-btn"
                           disabled={
                             !isMyTurn ||
+                            isCardinalDecisionPending ||
                             !selectedCard ||
                             mustPlayCountess ||
                             (targetNeeded && !isTargetSelectionValid && !canPlayWithoutTarget) ||
@@ -773,7 +728,7 @@ export function RoomPage({
                           }
                           onClick={handleConfirmPlay}
                         >
-                          Confirm & Play
+                          Confirm Discard
                         </button>
                       </div>
                     </div>
@@ -855,6 +810,13 @@ export function RoomPage({
         buttonTitle="Open Love Letter rules and card guide"
         mode={state.mode}
       />
+      {activeEffectPresentation ? (
+        <DiscardResolutionOverlay
+          effect={activeEffectPresentation}
+          onDismiss={onDismissEffect}
+          onCardinalPeek={onCardinalPeek}
+        />
+      ) : null}
     </main>
   );
 }

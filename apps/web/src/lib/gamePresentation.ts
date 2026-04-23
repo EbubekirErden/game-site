@@ -30,6 +30,10 @@ export function formatErrorReason(reason: string): string {
       return "Only the room creator can start the game.";
     case "players_not_ready":
       return "You need at least 2 players, and everyone in the room must be ready.";
+    case "only_creator_can_change_mode":
+      return "Only the room creator can change the mode.";
+    case "cannot_change_mode_now":
+      return "The mode can only be changed while the room is still in the lobby.";
     case "game_already_started":
       return "That room already started, so new players cannot join right now.";
     case "player_not_found":
@@ -54,6 +58,10 @@ export function formatErrorReason(reason: string): string {
       return "Guard guesses must match a legal card value for the selected mode.";
     case "invalid_bishop_guess":
       return "Bishop guesses must be a value between 0 and 9.";
+    case "cardinal_peek_required":
+      return "Finish Cardinal by choosing which swapped hand to inspect.";
+    case "cardinal_peek_not_pending":
+      return "There is no pending Cardinal hand to inspect.";
     default:
       return reason.replaceAll("_", " ");
   }

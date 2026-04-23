@@ -107,6 +107,10 @@ export interface RoundState {
     playerId: PlayerID;
     targetPlayerId: PlayerID;
   }>;
+  pendingCardinalPeek: {
+    actorPlayerId: PlayerID;
+    targetPlayerIds: [PlayerID, PlayerID];
+  } | null;
 }
 
 export interface GameState {
@@ -156,6 +160,10 @@ export interface PublicGameState {
       playerId: PlayerID;
       targetPlayerId: PlayerID;
     }>;
+    pendingCardinalPeek: {
+      actorPlayerId: PlayerID;
+      targetPlayerIds: [PlayerID, PlayerID];
+    } | null;
   } | null;
   roundWinnerIds: PlayerID[];
   matchWinnerIds: PlayerID[];
@@ -170,3 +178,89 @@ export interface PlayerViewState extends PublicGameState {
     }
   >;
 }
+
+export type PrivateEffectVisibility = "actor_only" | "actor_and_target" | "actor_and_targets";
+export type PrivateEffectDecision = "none" | "cardinal_peek_choice";
+
+interface PrivateEffectBase {
+  effectId: string;
+  turnNumber: number;
+  viewerPlayerId: PlayerID;
+  actorPlayerId: PlayerID;
+  cardId: CardID;
+  visibleTo: PrivateEffectVisibility;
+  requiresDecision: PrivateEffectDecision;
+  title: string;
+  message: string;
+}
+
+export type PrivateEffectPresentation =
+  | (PrivateEffectBase & {
+      kind: "message";
+      reminderKey?: "count" | "constable" | "jester";
+      highlightPlayerId?: PlayerID | null;
+      isFizzle?: boolean;
+    })
+  | (PrivateEffectBase & {
+      kind: "peek";
+      targetPlayerId: PlayerID;
+      targetPlayerName: string;
+      revealedCard: CardInstance | null;
+    })
+  | (PrivateEffectBase & {
+      kind: "compare";
+      compareMode: "lower_loses" | "higher_loses";
+      selfPlayerId: PlayerID;
+      selfPlayerName: string;
+      selfCard: CardInstance | null;
+      opposingPlayerId: PlayerID;
+      opposingPlayerName: string;
+      opposingCard: CardInstance | null;
+      winningPlayerId: PlayerID | null;
+      losingPlayerId: PlayerID | null;
+    })
+  | (PrivateEffectBase & {
+      kind: "swap";
+      swapMode: "king" | "cardinal";
+      players: [
+        { playerId: PlayerID; playerName: string; cardCount: number },
+        { playerId: PlayerID; playerName: string; cardCount: number },
+      ];
+      peekChoices?: Array<{ playerId: PlayerID; playerName: string }>;
+    })
+  | (PrivateEffectBase & {
+      kind: "discard_reveal";
+      targetPlayerId: PlayerID;
+      targetPlayerName: string;
+      discardedCard: CardInstance | null;
+      drewReplacement: boolean;
+      causedElimination: boolean;
+      eliminationReason?: string;
+    })
+  | (PrivateEffectBase & {
+      kind: "guess";
+      guessMode: "guard" | "bishop";
+      targetPlayerId: PlayerID;
+      targetPlayerName: string;
+      guessedValue: number;
+      guessedCardIds: CardID[];
+      revealedCards: CardInstance[];
+      outcome: "correct" | "wrong" | "assassin_rebound";
+      eliminatedPlayerId?: PlayerID;
+      tokenAwarded?: boolean;
+      outcomeMessage: string;
+    })
+  | (PrivateEffectBase & {
+      kind: "multi_peek";
+      seen: Array<{
+        targetPlayerId: PlayerID;
+        targetPlayerName: string;
+        revealedCard: CardInstance | null;
+      }>;
+    })
+  | (PrivateEffectBase & {
+      kind: "cardinal_reveal";
+      chosenPlayerId: PlayerID;
+      chosenPlayerName: string;
+      revealedCard: CardInstance | null;
+    });

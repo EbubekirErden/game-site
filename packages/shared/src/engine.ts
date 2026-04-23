@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { getCardCopies, getCardDef, getCardsForMode } from "./cards.js";
-import { resolvePlayAction } from "./rules.js";
+import { resolveCardinalPeekAction, resolvePlayAction } from "./rules.js";
 import type { ActionResult } from "./rules.js";
 import type { CardID, CardInstance, GameState, LoveLetterMode, PlayerID, PlayerState, PlayerViewState, PublicGameState, RoomID } from "./types.js";
 
@@ -308,6 +308,17 @@ export function setPlayerReady(state: GameState, playerId: PlayerID, isReady: bo
   };
 }
 
+export function setGameMode(state: GameState, playerId: PlayerID, mode: LoveLetterMode): GameState {
+  if (state.phase !== "lobby") return state;
+  if (state.creatorId !== playerId) return state;
+  if (state.mode === mode) return state;
+
+  return {
+    ...state,
+    mode,
+  };
+}
+
 export function removePlayer(state: GameState, playerId: PlayerID): GameState {
   const leavingPlayer = state.players.find((player) => player.id === playerId);
   if (!leavingPlayer) return state;
@@ -326,6 +337,12 @@ export function removePlayer(state: GameState, playerId: PlayerID): GameState {
           jesterAssignments: state.round.jesterAssignments.filter(
             (assignment) => assignment.playerId !== playerId && assignment.targetPlayerId !== playerId,
           ),
+          pendingCardinalPeek:
+            state.round.pendingCardinalPeek &&
+            (state.round.pendingCardinalPeek.actorPlayerId === playerId ||
+              state.round.pendingCardinalPeek.targetPlayerIds.includes(playerId))
+              ? null
+              : state.round.pendingCardinalPeek,
         };
 
   const nextState: GameState = {
@@ -428,6 +445,7 @@ export function startRound(state: GameState): GameState {
       lastRoundStarterId: starterId,
       forcedTargetPlayerId: null,
       jesterAssignments: [],
+      pendingCardinalPeek: null,
     },
     roundWinnerIds: [],
     matchWinnerIds: [],
@@ -446,29 +464,18 @@ export function playCard(
   state: GameState,
   playerId: PlayerID,
   instanceId: string,
-  options: { targetPlayerId?: PlayerID; targetPlayerIds?: PlayerID[]; guessedValue?: number; peekPlayerId?: PlayerID } = {},
+  options: { targetPlayerId?: PlayerID; targetPlayerIds?: PlayerID[]; guessedValue?: number } = {},
 ): GameState {
   const result = playCardAction(state, playerId, instanceId, options);
   return result.state ?? state;
 }
 
-export function playCardAction(
-  state: GameState,
-  playerId: PlayerID,
-  instanceId: string,
-  options: { targetPlayerId?: PlayerID; targetPlayerIds?: PlayerID[]; guessedValue?: number; peekPlayerId?: PlayerID } = {},
-): ActionResult {
-  const result = resolvePlayAction(state, {
-    type: "play_card",
-    playerId,
-    instanceId,
-    targetPlayerId: options.targetPlayerId,
-    targetPlayerIds: options.targetPlayerIds,
-    guessedValue: options.guessedValue,
-    peekPlayerId: options.peekPlayerId,
-  });
-
+function advanceAfterResolvedAction(result: ActionResult, actingPlayerId: PlayerID): ActionResult {
   if (!result.ok || !result.state || !result.state.round) {
+    return result;
+  }
+
+  if (result.state.round.pendingCardinalPeek) {
     return result;
   }
 
@@ -497,7 +504,7 @@ export function playCardAction(
     };
   }
 
-  const nextPlayerId = getNextActivePlayerId(resolvedState.players, playerId);
+  const nextPlayerId = getNextActivePlayerId(resolvedState.players, actingPlayerId);
   if (!nextPlayerId) {
     return {
       ...result,
@@ -518,6 +525,56 @@ export function playCardAction(
     ...result,
     state: drawToActivePlayer(advancedState, nextPlayerId),
   };
+}
+
+export function playCardAction(
+  state: GameState,
+  playerId: PlayerID,
+  instanceId: string,
+  options: { targetPlayerId?: PlayerID; targetPlayerIds?: PlayerID[]; guessedValue?: number } = {},
+): ActionResult {
+  return advanceAfterResolvedAction(
+    resolvePlayAction(state, {
+      type: "play_card",
+      playerId,
+      instanceId,
+      targetPlayerId: options.targetPlayerId,
+      targetPlayerIds: options.targetPlayerIds,
+      guessedValue: options.guessedValue,
+    }),
+    playerId,
+  );
+}
+
+export function cardinalPeekAction(
+  state: GameState,
+  playerId: PlayerID,
+  targetPlayerId: PlayerID,
+): ActionResult {
+  return advanceAfterResolvedAction(
+    resolveCardinalPeekAction(state, {
+      type: "cardinal_peek",
+      playerId,
+      targetPlayerId,
+    }),
+    playerId,
+  );
+}
+
+export function playCardActionWithoutAdvance(
+  state: GameState,
+  playerId: PlayerID,
+  instanceId: string,
+  options: { targetPlayerId?: PlayerID; targetPlayerIds?: PlayerID[]; guessedValue?: number } = {},
+): ActionResult {
+  return resolvePlayAction(state, {
+    type: "play_card",
+    playerId,
+    instanceId,
+    targetPlayerId: options.targetPlayerId,
+    targetPlayerIds: options.targetPlayerIds,
+    guessedValue: options.guessedValue,
+  });
 }
 
 export function toPublicGameState(state: GameState): PublicGameState {
@@ -546,6 +603,12 @@ export function toPublicGameState(state: GameState): PublicGameState {
           lastRoundStarterId: state.round.lastRoundStarterId,
           forcedTargetPlayerId: state.round.forcedTargetPlayerId,
           jesterAssignments: [...state.round.jesterAssignments],
+          pendingCardinalPeek: state.round.pendingCardinalPeek
+            ? {
+                actorPlayerId: state.round.pendingCardinalPeek.actorPlayerId,
+                targetPlayerIds: [...state.round.pendingCardinalPeek.targetPlayerIds] as [PlayerID, PlayerID],
+              }
+            : null,
         }
       : null,
     roundWinnerIds: [...state.roundWinnerIds],

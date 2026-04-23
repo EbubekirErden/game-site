@@ -89,19 +89,49 @@ export function LoveLetterInfoDrawer({
 
             <section className="info-section">
               <h3>Win Goals</h3>
-              {(["classic", "premium"] as const).map((variant) => (
-                <div key={variant} style={{ marginBottom: "1rem" }}>
-                  <p className="info-muted"><strong>{LOVE_LETTER_MODE_INFO[variant].label}</strong></p>
-                  <div className="info-chip-row">
-                    {LOVE_LETTER_MODE_INFO[variant].tokenGoals.map((goal) => (
-                      <div key={`${variant}-${goal.label}`} className="info-chip">
-                        <strong>{goal.label}</strong>
-                        <span>{goal.tokens} Tokens</span>
-                      </div>
-                    ))}
+              {/* 1. Using Grid instead of Flex for the columns to force the 50/50 split */}
+              <div style={{ 
+                display: "grid", 
+                gridTemplateColumns: "1fr 1fr", 
+                gap: "24px", 
+                alignItems: "flex-start" 
+              }}>
+                {(["classic", "premium"] as const).map((variant) => (
+                  <div key={variant}>
+                    <p className="info-muted"><strong>{LOVE_LETTER_MODE_INFO[variant].label}</strong></p>
+                    
+                    {/* 2. Inner Flexbox for the horizontal chips */}
+                    <div 
+                      className="info-chip-row" 
+                      style={{ 
+                        display: "flex", 
+                        flexDirection: "row", 
+                        gap: "8px", 
+                        flexWrap: "nowrap", // Forces chips to stay in one line
+                        overflowX: "auto",   // Adds a scrollbar if chips are too wide for the column
+                        paddingBottom: "8px" 
+                      }}
+                    >
+                      {LOVE_LETTER_MODE_INFO[variant].tokenGoals.map((goal) => (
+                        <div 
+                          key={`${variant}-${goal.label}`} 
+                          className="info-chip"
+                          style={{ 
+                            flexShrink: 0, 
+                            minWidth: "max-content",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center"
+                          }}
+                        >
+                          <strong>{goal.label}</strong>
+                          <span style={{ fontSize: "0.85em", opacity: 0.8 }}>{goal.tokens} Tokens</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </section>
 
             <section className="info-section">

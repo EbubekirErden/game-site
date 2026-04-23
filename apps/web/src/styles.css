@@ -344,14 +344,20 @@ input::placeholder {
 .hub-layout {
   display: flex;
   min-height: 100vh;
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(90deg, rgba(10, 13, 18, 0.82), rgba(10, 13, 18, 0.48)),
+    url("/background/homepage_bg.png") center center / cover no-repeat;
 }
 
 .hub-sidebar {
   width: 280px;
-  background: rgba(15, 20, 26, 0.95);
-  border-right: 1px solid #2a3543;
+  background: linear-gradient(180deg, rgba(12, 16, 22, 0.94), rgba(12, 16, 22, 0.82));
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
+  backdrop-filter: blur(10px);
 }
 
 .hub-sidebar-header {
@@ -398,17 +404,17 @@ input::placeholder {
   display: grid;
   place-items: center;
   padding: 40px;
-  background: radial-gradient(circle at center, #243040 0%, #18212b 100%);
 }
 
 .hub-action-stage {
   width: min(750px, 100%);
-  background: rgba(36, 48, 64, 0.6);
-  backdrop-filter: blur(10px);
-  border: 1px solid #2a3543;
+  background:
+    linear-gradient(180deg, rgba(17, 23, 32, 0.86), rgba(17, 23, 32, 0.72));
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 24px;
   padding: 40px;
-  box-shadow: 0 24px 48px rgba(0,0,0,0.6);
+  box-shadow: 0 28px 60px rgba(0,0,0,0.45);
 }
 
 .stage-header h2 { margin: 0 0 8px 0; font-size: 1.8rem; }
@@ -424,7 +430,7 @@ input::placeholder {
 .player-setup {
   margin-top: 24px;
   padding-bottom: 32px;
-  border-bottom: 1px solid #3d4c5f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .mode-picker {
@@ -480,8 +486,8 @@ input::placeholder {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: rgba(15, 20, 26, 0.5); 
-  border: 1px solid #2a3543;
+  background: rgba(10, 14, 20, 0.58); 
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   padding: 24px;
   height: 100%;
@@ -510,6 +516,22 @@ input::placeholder {
   justify-content: center;
   margin-bottom: 16px;
   color: #8db6f5;
+}
+
+.homepage-note-banner {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(247, 213, 153, 0.22);
+  background: linear-gradient(180deg, rgba(94, 67, 28, 0.26), rgba(51, 37, 16, 0.18));
+  color: #f4e3c1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.homepage-note-banner strong {
+  color: #fff3d9;
 }
 
 /* --- GAME TABLE LAYOUT (ROOM PAGE) --- */
@@ -1616,6 +1638,246 @@ input::placeholder {
   white-space: nowrap;
 }
 
+.effect-reminder-panel {
+  border-color: rgba(228, 191, 123, 0.3);
+  background: linear-gradient(180deg, rgba(50, 40, 27, 0.86), rgba(26, 21, 15, 0.92));
+}
+
+.effect-reminder-panel p {
+  color: #e7d8be;
+  margin: 0;
+}
+
+.effect-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.effect-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 12, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.effect-overlay-panel {
+  position: relative;
+  z-index: 1;
+  width: min(760px, 100%);
+  max-height: min(92vh, 860px);
+  overflow: auto;
+  border-radius: 28px;
+  border: 1px solid rgba(231, 217, 191, 0.16);
+  background:
+    radial-gradient(circle at top, rgba(177, 135, 71, 0.2), transparent 42%),
+    linear-gradient(180deg, rgba(30, 24, 19, 0.98), rgba(14, 12, 10, 0.98));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
+  animation: effect-overlay-rise 220ms ease-out both;
+}
+
+.effect-overlay-header,
+.effect-overlay-body,
+.effect-overlay-footer {
+  padding-left: 28px;
+  padding-right: 28px;
+}
+
+.effect-overlay-header {
+  padding-top: 28px;
+}
+
+.effect-overlay-header h2 {
+  margin: 0 0 8px;
+  color: #fff4de;
+}
+
+.effect-overlay-header p,
+.effect-message-panel p {
+  margin: 0;
+  color: #d7c6aa;
+  line-height: 1.6;
+}
+
+.effect-overlay-body {
+  padding-top: 22px;
+  padding-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.effect-overlay-footer {
+  padding-top: 8px;
+  padding-bottom: 28px;
+  display: flex;
+  justify-content: center;
+}
+
+.effect-card-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.effect-card-grid.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.effect-card-grid.dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.effect-card-grid-swap .effect-card-lane {
+  min-height: 240px;
+}
+
+.effect-swap-left {
+  animation: effect-swap-left 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.effect-swap-right {
+  animation: effect-swap-right 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.effect-card-lane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: opacity 260ms ease, filter 260ms ease, transform 260ms ease;
+}
+
+.effect-card-lane .card-view {
+  transform: scale(1.04);
+  transform-origin: center top;
+}
+
+.effect-inline-card-row .card-view {
+  width: 88px;
+  height: 138px;
+  padding: 6px;
+}
+
+.effect-inline-card-row .card-view-value-badge {
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  font-size: 0.74rem;
+  border-width: 1.5px;
+}
+
+.effect-inline-card-row .card-view-art-shell {
+  width: calc(100% + 12px);
+  margin: -6px -6px -6px;
+}
+
+.effect-inline-card-row .card-view-footer {
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  padding: 5px 5px 6px;
+}
+
+.effect-inline-card-row .card-view-footer strong {
+  font-size: 0.48rem;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+}
+
+.effect-card-lane.is-dimmed,
+.effect-inline-card.is-dimmed {
+  opacity: 0.34;
+  filter: grayscale(1);
+  transform: scale(0.98);
+}
+
+.effect-card-label,
+.effect-choice-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f0c88b;
+}
+
+.effect-inline-card-row {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.effect-inline-card {
+  transition: opacity 260ms ease, filter 260ms ease, transform 260ms ease;
+}
+
+.effect-outcome-row {
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(201, 161, 88, 0.12);
+  border: 1px solid rgba(201, 161, 88, 0.18);
+  color: #f7e7cd;
+  font-weight: 600;
+}
+
+.effect-stack {
+  position: relative;
+  width: 138px;
+  height: 188px;
+}
+
+.effect-stack-card {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
+  transform: translateX(calc(var(--stack-index, 0) * 8px)) translateY(calc(var(--stack-index, 0) * 3px));
+}
+
+.effect-choice-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.effect-choice-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@keyframes effect-overlay-rise {
+  from { opacity: 0; transform: translateY(18px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes effect-swap-left {
+  0% { opacity: 0; transform: translateX(-34px) scale(0.96); }
+  45% { opacity: 1; transform: translateX(34px) scale(1.02); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes effect-swap-right {
+  0% { opacity: 0; transform: translateX(34px) scale(0.96); }
+  45% { opacity: 1; transform: translateX(-34px) scale(1.02); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
 @media (max-width: 900px) {
   .table-workspace {
     grid-template-columns: 1fr;
@@ -1651,6 +1913,25 @@ input::placeholder {
     justify-self: center;
   }
 
+  .effect-card-grid.dual {
+    grid-template-columns: 1fr;
+  }
+
+  .effect-card-lane .card-view {
+    transform: scale(0.94);
+  }
+
+  .effect-overlay {
+    padding: 14px;
+  }
+
+  .effect-overlay-header,
+  .effect-overlay-body,
+  .effect-overlay-footer {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
   .room-floating-info-button {
     right: 16px;
     bottom: 16px;
@@ -1665,4 +1946,3 @@ input::placeholder {
     max-height: 420px;
   }
 }
-

@@ -1,5 +1,15 @@
-import { getCardDef } from "./cards.js";
-import type { CardID, CardInstance, GameEvent, GameState, PlayerID, PlayerState } from "./types.js";
+import { getCardDef, getCardsForMode } from "./cards.js";
+import type {
+  CardID,
+  CardInstance,
+  GameEvent,
+  GameState,
+  PlayerID,
+  PlayerState,
+  PrivateEffectDecision,
+  PrivateEffectPresentation,
+  PrivateEffectVisibility,
+} from "./types.js";
 
 export type ClientAction =
   | {
@@ -9,20 +19,19 @@ export type ClientAction =
       targetPlayerId?: string;
       targetPlayerIds?: string[];
       guessedValue?: number;
-      peekPlayerId?: string;
+    }
+  | {
+      type: "cardinal_peek";
+      playerId: string;
+      targetPlayerId: string;
     }
   | { type: "start_round"; playerId: string };
-
-type PrivateNote =
-  | { type: "peek"; playerId: PlayerID; targetPlayerId: PlayerID; seenCard: CardInstance | null }
-  | { type: "compare"; playerId: PlayerID; targetPlayerId: PlayerID; playerCard: CardInstance | null; targetCard: CardInstance | null }
-  | { type: "multi_peek"; playerId: PlayerID; seen: Array<{ targetPlayerId: PlayerID; seenCard: CardInstance | null }> };
 
 export interface ActionResult {
   ok: boolean;
   reason?: string;
   state?: GameState;
-  privateNotes?: PrivateNote[];
+  privateEffects?: PrivateEffectPresentation[];
 }
 
 function clonePlayers(players: PlayerState[]): PlayerState[] {
@@ -37,12 +46,24 @@ function findPlayer(players: PlayerState[], playerId: PlayerID): PlayerState | u
   return players.find((player) => player.id === playerId);
 }
 
-function isTargetable(sourcePlayerId: PlayerID, target: PlayerState): boolean {
-  return target.status === "active" && (target.id === sourcePlayerId || !target.protectedUntilNextTurn);
+function cloneRound(round: NonNullable<GameState["round"]>): NonNullable<GameState["round"]> {
+  return {
+    ...round,
+    deck: [...round.deck],
+    visibleRemovedCards: [...round.visibleRemovedCards],
+    roundWinners: [...round.roundWinners],
+    jesterAssignments: [...round.jesterAssignments],
+    pendingCardinalPeek: round.pendingCardinalPeek
+      ? {
+          actorPlayerId: round.pendingCardinalPeek.actorPlayerId,
+          targetPlayerIds: [...round.pendingCardinalPeek.targetPlayerIds] as [PlayerID, PlayerID],
+        }
+      : null,
+  };
 }
 
-function getActivePlayers(players: PlayerState[]): PlayerState[] {
-  return players.filter((player) => player.status === "active");
+function isTargetable(sourcePlayerId: PlayerID, target: PlayerState): boolean {
+  return target.status === "active" && (target.id === sourcePlayerId || !target.protectedUntilNextTurn);
 }
 
 function getTargetableOthers(players: PlayerState[], playerId: PlayerID): PlayerState[] {
@@ -113,8 +134,6 @@ function getLegalTargetSets(state: GameState, player: PlayerState, playedCardId:
       targetSets = [[player.id]];
       break;
     case "sycophant":
-      targetSets = selfAndTargetableOthers.map((id) => [id]);
-      break;
     case "prince":
       targetSets = selfAndTargetableOthers.map((id) => [id]);
       break;
@@ -180,10 +199,11 @@ function eliminatePlayer(
   }
 }
 
-function resolvePrinceDraw(round: NonNullable<GameState["round"]>, target: PlayerState): void {
+function resolvePrinceDraw(round: NonNullable<GameState["round"]>, target: PlayerState): boolean {
   const nextCard = round.deck.shift() ?? round.setAsideCard;
-  if (!nextCard) return;
+  if (!nextCard) return false;
   target.hand = [nextCard];
+  return true;
 }
 
 function resolveKnockout(
@@ -203,9 +223,85 @@ function resolveKnockout(
   eliminatePlayer(target, log, details);
 }
 
+function getGuessedCardIds(mode: GameState["mode"], guessedValue: number): CardID[] {
+  return getCardsForMode(mode)
+    .filter((card) => getCardDef(card.id).value === guessedValue)
+    .map((card) => card.id);
+}
+
+function createEffectId(
+  turnNumber: number,
+  cardId: CardID,
+  actorPlayerId: PlayerID,
+  viewerPlayerId: PlayerID,
+  suffix: string,
+): string {
+  return `${turnNumber}:${cardId}:${actorPlayerId}:${viewerPlayerId}:${suffix}`;
+}
+
+function makeBaseEffect(
+  round: NonNullable<GameState["round"]>,
+  viewerPlayerId: PlayerID,
+  actorPlayerId: PlayerID,
+  cardId: CardID,
+  visibleTo: PrivateEffectVisibility,
+  requiresDecision: PrivateEffectDecision,
+  title: string,
+  message: string,
+) {
+  return {
+    effectId: createEffectId(round.turnNumber, cardId, actorPlayerId, viewerPlayerId, title.toLowerCase().replace(/\s+/g, "_")),
+    turnNumber: round.turnNumber,
+    viewerPlayerId,
+    actorPlayerId,
+    cardId,
+    visibleTo,
+    requiresDecision,
+    title,
+    message,
+  } as const;
+}
+
+function pushMessageEffect(
+  effects: PrivateEffectPresentation[],
+  round: NonNullable<GameState["round"]>,
+  params: {
+    viewerPlayerId: PlayerID;
+    actorPlayerId: PlayerID;
+    cardId: CardID;
+    visibleTo: PrivateEffectVisibility;
+    title: string;
+    message: string;
+    reminderKey?: "count" | "constable" | "jester";
+    highlightPlayerId?: PlayerID | null;
+    isFizzle?: boolean;
+  },
+): void {
+  effects.push({
+    ...makeBaseEffect(
+      round,
+      params.viewerPlayerId,
+      params.actorPlayerId,
+      params.cardId,
+      params.visibleTo,
+      "none",
+      params.title,
+      params.message,
+    ),
+    kind: "message",
+    reminderKey: params.reminderKey,
+    highlightPlayerId: params.highlightPlayerId,
+    isFizzle: params.isFizzle ?? false,
+  });
+}
+
 export function validatePlayAction(state: GameState, action: Extract<ClientAction, { type: "play_card" }>): ActionResult {
   if (state.phase !== "in_round" || !state.round) {
     return { ok: false, reason: "round_not_active" };
+  }
+
+  if (state.round.pendingCardinalPeek) {
+    return { ok: false, reason: "cardinal_peek_required" };
   }
 
   if (state.round.currentPlayerId !== action.playerId) {
@@ -267,15 +363,41 @@ export function validatePlayAction(state: GameState, action: Extract<ClientActio
   const legalTargetSets = getLegalTargetSets(state, player, playedCard.id);
   const submittedTargets = getSubmittedTargetIds(action, playedCard.id);
 
-  if (playedCard.id === "cardinal" && action.peekPlayerId && !submittedTargets.includes(action.peekPlayerId)) {
-    return { ok: false, reason: "invalid_target" };
-  }
-
-  if (playedCard.id !== "guard" && playedCard.id !== "bishop" && legalTargetSets.length > 0 && submittedTargets.length === 0 && cardChoosesPlayers(playedCard.id)) {
+  if (
+    playedCard.id !== "guard" &&
+    playedCard.id !== "bishop" &&
+    legalTargetSets.length > 0 &&
+    submittedTargets.length === 0 &&
+    cardChoosesPlayers(playedCard.id)
+  ) {
     return { ok: false, reason: "target_required" };
   }
 
   if (submittedTargets.length > 0 && !legalTargetSets.some((targetSet) => sameTargets(targetSet, submittedTargets))) {
+    return { ok: false, reason: "invalid_target" };
+  }
+
+  return { ok: true };
+}
+
+export function validateCardinalPeekAction(
+  state: GameState,
+  action: Extract<ClientAction, { type: "cardinal_peek" }>,
+): ActionResult {
+  if (state.phase !== "in_round" || !state.round) {
+    return { ok: false, reason: "round_not_active" };
+  }
+
+  const pending = state.round.pendingCardinalPeek;
+  if (!pending) {
+    return { ok: false, reason: "cardinal_peek_not_pending" };
+  }
+
+  if (pending.actorPlayerId !== action.playerId || state.round.currentPlayerId !== action.playerId) {
+    return { ok: false, reason: "not_your_turn" };
+  }
+
+  if (!pending.targetPlayerIds.includes(action.targetPlayerId)) {
     return { ok: false, reason: "invalid_target" };
   }
 
@@ -289,15 +411,9 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
   }
 
   const players = clonePlayers(state.players);
-  const round = {
-    ...state.round,
-    deck: [...state.round.deck],
-    visibleRemovedCards: [...state.round.visibleRemovedCards],
-    roundWinners: [...state.round.roundWinners],
-    jesterAssignments: [...state.round.jesterAssignments],
-  };
+  const round = cloneRound(state.round);
   const log: GameEvent[] = [...state.log];
-  const privateNotes: PrivateNote[] = [];
+  const privateEffects: PrivateEffectPresentation[] = [];
 
   const player = findPlayer(players, action.playerId)!;
   const cardIndex = player.hand.findIndex((card) => card.instanceId === action.instanceId);
@@ -317,6 +433,16 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
   }
 
   if (cardChoosesPlayers(playedCardDef.id) && !hasUsableTargets && legalTargetSets.length === 0) {
+    pushMessageEffect(privateEffects, round, {
+      viewerPlayerId: player.id,
+      actorPlayerId: player.id,
+      cardId: playedCardDef.id,
+      visibleTo: "actor_only",
+      title: `${playedCardDef.name} Discarded`,
+      message: `You discarded ${playedCardDef.name}, but it had no legal target so its effect fizzled.`,
+      isFizzle: true,
+    });
+
     return {
       ok: true,
       state: {
@@ -325,7 +451,7 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
         round,
         log,
       },
-      privateNotes,
+      privateEffects,
     };
   }
 
@@ -342,8 +468,16 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
         sourceCardId: "guard",
       });
 
-      const targetCard = target.hand[0];
+      const targetCard = target.hand[0] ?? null;
+      const guessedCardIds = getGuessedCardIds(state.mode, action.guessedValue!);
+      let outcome: "correct" | "wrong" | "assassin_rebound" = "wrong";
+      let outcomeMessage = `You guessed ${action.guessedValue}, but ${target.name} stayed in the round.`;
+      let eliminatedPlayerId: PlayerID | undefined;
+      let revealedCards: CardInstance[] = [];
+
       if (targetCard?.cardId === "assassin") {
+        outcome = "assassin_rebound";
+        revealedCards = [targetCard];
         const discardedAssassin = discardHandCard(target);
         if (discardedAssassin) {
           resolvePrinceDraw(round, target);
@@ -352,15 +486,32 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
           sourceCardId: "assassin",
           reason: `was caught by ${target.name}'s Assassin after playing Guard`,
         });
-        break;
-      }
-
-      if (targetCard && getCardDef(targetCard.cardId).value === action.guessedValue) {
+        eliminatedPlayerId = player.id;
+        outcomeMessage = `${target.name} revealed Assassin. Your Guard turned back on you and eliminated you.`;
+      } else if (targetCard && getCardDef(targetCard.cardId).value === action.guessedValue) {
+        outcome = "correct";
+        revealedCards = [targetCard];
         resolveKnockout(round, target, log, {
           sourceCardId: "guard",
           reason: `was correctly guessed by ${player.name}'s Guard`,
         });
+        eliminatedPlayerId = target.id;
+        outcomeMessage = `You guessed correctly. ${target.name} was eliminated.`;
       }
+
+      privateEffects.push({
+        ...makeBaseEffect(round, player.id, player.id, "guard", "actor_only", "none", "Guard Guess", `You discarded Guard and guessed ${target.name}.`),
+        kind: "guess",
+        guessMode: "guard",
+        targetPlayerId: target.id,
+        targetPlayerName: target.name,
+        guessedValue: action.guessedValue!,
+        guessedCardIds,
+        revealedCards,
+        outcome,
+        eliminatedPlayerId,
+        outcomeMessage,
+      });
       break;
     }
     case "bishop": {
@@ -375,30 +526,59 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
         sourceCardId: "bishop",
       });
 
-      const targetCard = target.hand[0];
+      const targetCard = target.hand[0] ?? null;
+      const guessedCardIds = getGuessedCardIds(state.mode, action.guessedValue!);
+      let outcome: "correct" | "wrong" | "assassin_rebound" = "wrong";
+      let outcomeMessage = `You guessed ${action.guessedValue}, but ${target.name} kept their hand.`;
+      let revealedCards: CardInstance[] = [];
+      let eliminatedPlayerId: PlayerID | undefined;
+      let tokenAwarded = false;
+
       if (targetCard && getCardDef(targetCard.cardId).value === action.guessedValue) {
+        outcome = "correct";
+        revealedCards = [targetCard];
         awardToken(player, log);
+        tokenAwarded = true;
         const discarded = discardHandCard(target);
         if (discarded && getCardDef(discarded.cardId).id === "princess") {
           eliminatePlayer(target, log, {
             sourceCardId: "bishop",
             reason: `discarded the Princess after ${player.name} revealed them with Bishop`,
           });
-          break;
+          eliminatedPlayerId = target.id;
+          outcomeMessage = `You guessed correctly, gained a token, and ${target.name} was eliminated after discarding Princess.`;
+        } else {
+          resolvePrinceDraw(round, target);
+          outcomeMessage = `You guessed correctly and gained a token of affection. ${target.name} discarded that hand and drew a replacement.`;
         }
-        resolvePrinceDraw(round, target);
       }
+
+      privateEffects.push({
+        ...makeBaseEffect(round, player.id, player.id, "bishop", "actor_only", "none", "Bishop Guess", `You discarded Bishop and guessed ${target.name}.`),
+        kind: "guess",
+        guessMode: "bishop",
+        targetPlayerId: target.id,
+        targetPlayerName: target.name,
+        guessedValue: action.guessedValue!,
+        guessedCardIds,
+        revealedCards,
+        outcome,
+        eliminatedPlayerId,
+        tokenAwarded,
+        outcomeMessage,
+      });
       break;
     }
     case "priest": {
       const target = findPlayer(players, submittedTargets[0]!);
       if (!target) break;
 
-      privateNotes.push({
-        type: "peek",
-        playerId: player.id,
+      privateEffects.push({
+        ...makeBaseEffect(round, player.id, player.id, "priest", "actor_only", "none", "Priest Revealed", `You discarded Priest and saw ${target.name}'s hand.`),
+        kind: "peek",
         targetPlayerId: target.id,
-        seenCard: target.hand[0] ?? null,
+        targetPlayerName: target.name,
+        revealedCard: target.hand[0] ?? null,
       });
       log.push({
         type: "card_seen",
@@ -409,40 +589,77 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       });
       break;
     }
-    case "baron": {
+    case "baron":
+    case "dowager_queen": {
       const target = findPlayer(players, submittedTargets[0]!);
       if (!target) break;
 
-      log.push({ type: "card_compared", playerId: player.id, targetPlayerId: target.id, sourceCardId: "baron" });
+      const compareMode = playedCardDef.id === "baron" ? "lower_loses" : "higher_loses";
+      log.push({ type: "card_compared", playerId: player.id, targetPlayerId: target.id, sourceCardId: playedCardDef.id });
       const playerCard = player.hand[0] ?? null;
       const targetCard = target.hand[0] ?? null;
-      privateNotes.push({
-        type: "compare",
-        playerId: player.id,
-        targetPlayerId: target.id,
-        playerCard,
-        targetCard,
-      });
-      privateNotes.push({
-        type: "compare",
-        playerId: target.id,
-        targetPlayerId: player.id,
-        playerCard: targetCard,
-        targetCard: playerCard,
-      });
-      if (!playerCard || !targetCard) break;
+      const playerValue = playerCard ? getCardDef(playerCard.cardId).value : null;
+      const targetValue = targetCard ? getCardDef(targetCard.cardId).value : null;
+      let winningPlayerId: PlayerID | null = null;
+      let losingPlayerId: PlayerID | null = null;
 
-      const playerValue = getCardDef(playerCard.cardId).value;
-      const targetValue = getCardDef(targetCard.cardId).value;
-      if (playerValue < targetValue) {
-        resolveKnockout(round, player, log, {
-          sourceCardId: "baron",
-          reason: `lost a Baron comparison against ${target.name}`,
+      if (playerValue !== null && targetValue !== null) {
+        if (compareMode === "lower_loses") {
+          if (playerValue < targetValue) {
+            winningPlayerId = target.id;
+            losingPlayerId = player.id;
+          } else if (targetValue < playerValue) {
+            winningPlayerId = player.id;
+            losingPlayerId = target.id;
+          }
+        } else if (playerValue > targetValue) {
+          winningPlayerId = target.id;
+          losingPlayerId = player.id;
+        } else if (targetValue > playerValue) {
+          winningPlayerId = player.id;
+          losingPlayerId = target.id;
+        }
+      }
+
+      for (const viewer of [player, target]) {
+        const selfCard = viewer.id === player.id ? playerCard : targetCard;
+        const opposingCard = viewer.id === player.id ? targetCard : playerCard;
+        const opposingPlayer = viewer.id === player.id ? target : player;
+        privateEffects.push({
+          ...makeBaseEffect(
+            round,
+            viewer.id,
+            player.id,
+            playedCardDef.id,
+            "actor_and_target",
+            "none",
+            `${playedCardDef.name} Comparison`,
+            viewer.id === player.id
+              ? `You discarded ${playedCardDef.name} and compared hands.`
+              : `${player.name} discarded ${playedCardDef.name} and compared hands with you.`,
+          ),
+          kind: "compare",
+          compareMode,
+          selfPlayerId: viewer.id,
+          selfPlayerName: viewer.name,
+          selfCard,
+          opposingPlayerId: opposingPlayer.id,
+          opposingPlayerName: opposingPlayer.name,
+          opposingCard,
+          winningPlayerId,
+          losingPlayerId,
         });
-      } else if (targetValue < playerValue) {
+      }
+
+      if (losingPlayerId === player.id) {
+        resolveKnockout(round, player, log, {
+          sourceCardId: playedCardDef.id,
+          reason: `lost a ${playedCardDef.name} comparison against ${target.name}`,
+        });
+      } else if (losingPlayerId === target.id) {
         resolveKnockout(round, target, log, {
-          sourceCardId: "baron",
-          reason: `lost a Baron comparison against ${player.name}`,
+          sourceCardId: playedCardDef.id,
+          reason: `lost a ${playedCardDef.name} comparison against ${player.name}`,
         });
       }
       break;
@@ -453,12 +670,22 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
         .filter((target): target is PlayerState => Boolean(target))
         .map((target) => ({
           targetPlayerId: target.id,
-          seenCard: target.hand[0] ?? null,
+          targetPlayerName: target.name,
+          revealedCard: target.hand[0] ?? null,
         }));
 
-      privateNotes.push({
-        type: "multi_peek",
-        playerId: player.id,
+      privateEffects.push({
+        ...makeBaseEffect(
+          round,
+          player.id,
+          player.id,
+          "baroness",
+          "actor_only",
+          "none",
+          "Baroness Reveal",
+          `You discarded Baroness and saw the hand${seen.length === 1 ? "" : "s"} of ${seen.map((entry) => entry.targetPlayerName).join(" and ")}.`,
+        ),
+        kind: "multi_peek",
         seen,
       });
       break;
@@ -466,11 +693,31 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
     case "handmaid": {
       player.protectedUntilNextTurn = true;
       log.push({ type: "player_protected", playerId: player.id, sourceCardId: "handmaid" });
+      pushMessageEffect(privateEffects, round, {
+        viewerPlayerId: player.id,
+        actorPlayerId: player.id,
+        cardId: "handmaid",
+        visibleTo: "actor_only",
+        title: "Handmaid Protection",
+        message: "You discarded Handmaid and are protected until your next turn.",
+      });
       break;
     }
     case "sycophant": {
       const forcedTargetId = submittedTargets[0] ?? null;
       round.forcedTargetPlayerId = forcedTargetId;
+      const forcedTarget = forcedTargetId ? findPlayer(players, forcedTargetId) : null;
+      pushMessageEffect(privateEffects, round, {
+        viewerPlayerId: player.id,
+        actorPlayerId: player.id,
+        cardId: "sycophant",
+        visibleTo: "actor_only",
+        title: "Sycophant Chosen",
+        message: forcedTarget
+          ? `You discarded Sycophant. The next targeting effect must include ${forcedTarget.name}.`
+          : "You discarded Sycophant.",
+        highlightPlayerId: forcedTarget?.id ?? null,
+      });
       break;
     }
     case "prince": {
@@ -478,20 +725,64 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       if (!target) break;
 
       const discarded = discardHandCard(target);
+      let causedElimination = false;
+      let drewReplacement = false;
+      let eliminationReason: string | undefined;
+
       if (discarded && getCardDef(discarded.cardId).id === "princess") {
+        causedElimination = true;
+        eliminationReason = `discarded the Princess after ${player.name} played Prince`;
         eliminatePlayer(target, log, {
           sourceCardId: "prince",
-          reason: `discarded the Princess after ${player.name} played Prince`,
+          reason: eliminationReason,
         });
-        break;
+      } else {
+        drewReplacement = resolvePrinceDraw(round, target);
       }
-      resolvePrinceDraw(round, target);
+
+      privateEffects.push({
+        ...makeBaseEffect(
+          round,
+          player.id,
+          player.id,
+          "prince",
+          "actor_only",
+          "none",
+          "Prince Discard",
+          `You discarded Prince and ${target.name} discarded their hand.`,
+        ),
+        kind: "discard_reveal",
+        targetPlayerId: target.id,
+        targetPlayerName: target.name,
+        discardedCard: discarded,
+        drewReplacement,
+        causedElimination,
+        eliminationReason,
+      });
       break;
     }
     case "count": {
+      pushMessageEffect(privateEffects, round, {
+        viewerPlayerId: player.id,
+        actorPlayerId: player.id,
+        cardId: "count",
+        visibleTo: "actor_only",
+        title: "Count Discarded",
+        message: "You discarded Count. If you reach round end, each Count in your discard pile adds to your final strength.",
+        reminderKey: "count",
+      });
       break;
     }
     case "constable": {
+      pushMessageEffect(privateEffects, round, {
+        viewerPlayerId: player.id,
+        actorPlayerId: player.id,
+        cardId: "constable",
+        visibleTo: "actor_only",
+        title: "Constable Discarded",
+        message: "You discarded Constable. If you are eliminated while it stays in your discard pile, you gain a token.",
+        reminderKey: "constable",
+      });
       break;
     }
     case "king": {
@@ -502,6 +793,29 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       player.hand = [...target.hand];
       target.hand = playerHand;
       log.push({ type: "card_swapped", playerId: player.id, targetPlayerId: target.id, sourceCardId: "king" });
+
+      for (const viewer of [player, target]) {
+        privateEffects.push({
+          ...makeBaseEffect(
+            round,
+            viewer.id,
+            player.id,
+            "king",
+            "actor_and_target",
+            "none",
+            "King Swap",
+            viewer.id === player.id
+              ? `You discarded King and swapped hands with ${target.name}.`
+              : `${player.name} discarded King and swapped hands with you.`,
+          ),
+          kind: "swap",
+          swapMode: "king",
+          players: [
+            { playerId: player.id, playerName: player.name, cardCount: player.hand.length },
+            { playerId: target.id, playerName: target.name, cardCount: target.hand.length },
+          ],
+        });
+      }
       break;
     }
     case "cardinal": {
@@ -513,70 +827,79 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       const firstHand = [...firstTarget.hand];
       firstTarget.hand = [...secondTarget.hand];
       secondTarget.hand = firstHand;
+      round.pendingCardinalPeek = {
+        actorPlayerId: player.id,
+        targetPlayerIds: [firstTarget.id, secondTarget.id],
+      };
       log.push({ type: "card_swapped", playerId: firstTarget.id, targetPlayerId: secondTarget.id, sourceCardId: "cardinal" });
 
-      if (action.peekPlayerId) {
-        const peekTarget = action.peekPlayerId === firstTarget.id ? firstTarget : action.peekPlayerId === secondTarget.id ? secondTarget : null;
-        if (peekTarget) {
-          privateNotes.push({
-            type: "peek",
-            playerId: player.id,
-            targetPlayerId: peekTarget.id,
-            seenCard: peekTarget.hand[0] ?? null,
-          });
-        }
+      const viewers = uniq([player.id, firstTarget.id, secondTarget.id]);
+      for (const viewerId of viewers) {
+        const viewer = findPlayer(players, viewerId);
+        if (!viewer) continue;
+
+        privateEffects.push({
+          ...makeBaseEffect(
+            round,
+            viewer.id,
+            player.id,
+            "cardinal",
+            "actor_and_targets",
+            viewer.id === player.id ? "cardinal_peek_choice" : "none",
+            "Cardinal Swap",
+            viewer.id === player.id
+              ? `You discarded Cardinal. ${firstTarget.name} and ${secondTarget.name} swapped hands.`
+              : `${player.name} discarded Cardinal. ${firstTarget.name} and ${secondTarget.name} swapped hands.`,
+          ),
+          kind: "swap",
+          swapMode: "cardinal",
+          players: [
+            { playerId: firstTarget.id, playerName: firstTarget.name, cardCount: firstTarget.hand.length },
+            { playerId: secondTarget.id, playerName: secondTarget.name, cardCount: secondTarget.hand.length },
+          ],
+          peekChoices:
+            viewer.id === player.id
+              ? [
+                  { playerId: firstTarget.id, playerName: firstTarget.name },
+                  { playerId: secondTarget.id, playerName: secondTarget.name },
+                ]
+              : undefined,
+        });
       }
       break;
     }
     case "countess": {
-      break;
-    }
-    case "dowager_queen": {
-      const target = findPlayer(players, submittedTargets[0]!);
-      if (!target) break;
-
-      log.push({ type: "card_compared", playerId: player.id, targetPlayerId: target.id, sourceCardId: "dowager_queen" });
-      const playerCard = player.hand[0] ?? null;
-      const targetCard = target.hand[0] ?? null;
-      privateNotes.push({
-        type: "compare",
-        playerId: player.id,
-        targetPlayerId: target.id,
-        playerCard,
-        targetCard,
+      pushMessageEffect(privateEffects, round, {
+        viewerPlayerId: player.id,
+        actorPlayerId: player.id,
+        cardId: "countess",
+        visibleTo: "actor_only",
+        title: "Countess Discarded",
+        message: "You discarded Countess. She has no immediate effect.",
       });
-      privateNotes.push({
-        type: "compare",
-        playerId: target.id,
-        targetPlayerId: player.id,
-        playerCard: targetCard,
-        targetCard: playerCard,
-      });
-      if (!playerCard || !targetCard) break;
-
-      const playerValue = getCardDef(playerCard.cardId).value;
-      const targetValue = getCardDef(targetCard.cardId).value;
-      if (playerValue > targetValue) {
-        resolveKnockout(round, player, log, {
-          sourceCardId: "dowager_queen",
-          reason: `lost a Dowager Queen comparison against ${target.name}`,
-        });
-      } else if (targetValue > playerValue) {
-        resolveKnockout(round, target, log, {
-          sourceCardId: "dowager_queen",
-          reason: `lost a Dowager Queen comparison against ${player.name}`,
-        });
-      }
       break;
     }
     case "jester": {
       const targetId = submittedTargets[0];
       if (!targetId) break;
 
+      const target = findPlayer(players, targetId);
       round.jesterAssignments = round.jesterAssignments.filter((assignment) => assignment.playerId !== player.id);
       round.jesterAssignments.push({
         playerId: player.id,
         targetPlayerId: targetId,
+      });
+
+      pushMessageEffect(privateEffects, round, {
+        viewerPlayerId: player.id,
+        actorPlayerId: player.id,
+        cardId: "jester",
+        visibleTo: "actor_only",
+        title: "Jester Prediction",
+        message: target
+          ? `You discarded Jester and chose ${target.name}. If they win the round, you gain a token too.`
+          : "You discarded Jester.",
+        reminderKey: "jester",
       });
       break;
     }
@@ -587,6 +910,14 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       eliminatePlayer(player, log, {
         sourceCardId: "princess",
         reason: "played the Princess",
+      });
+      pushMessageEffect(privateEffects, round, {
+        viewerPlayerId: player.id,
+        actorPlayerId: player.id,
+        cardId: "princess",
+        visibleTo: "actor_only",
+        title: "Princess Discarded",
+        message: "You discarded Princess and were eliminated from the round.",
       });
       break;
     }
@@ -600,6 +931,61 @@ export function resolvePlayAction(state: GameState, action: Extract<ClientAction
       round,
       log,
     },
-    privateNotes,
+    privateEffects,
+  };
+}
+
+export function resolveCardinalPeekAction(
+  state: GameState,
+  action: Extract<ClientAction, { type: "cardinal_peek" }>,
+): ActionResult {
+  const validation = validateCardinalPeekAction(state, action);
+  if (!validation.ok || !state.round) {
+    return validation;
+  }
+
+  const players = clonePlayers(state.players);
+  const round = cloneRound(state.round);
+  const log: GameEvent[] = [...state.log];
+  const actor = findPlayer(players, action.playerId)!;
+  const target = findPlayer(players, action.targetPlayerId)!;
+
+  round.pendingCardinalPeek = null;
+  log.push({
+    type: "card_seen",
+    playerId: actor.id,
+    targetPlayerId: target.id,
+    seenCardId: target.hand[0]?.cardId ?? "guard",
+    sourceCardId: "cardinal",
+  });
+
+  const privateEffects: PrivateEffectPresentation[] = [
+    {
+      ...makeBaseEffect(
+        round,
+        actor.id,
+        actor.id,
+        "cardinal",
+        "actor_only",
+        "none",
+        "Cardinal Hand Revealed",
+        `You chose to see ${target.name}'s hand after the swap.`,
+      ),
+      kind: "cardinal_reveal",
+      chosenPlayerId: target.id,
+      chosenPlayerName: target.name,
+      revealedCard: target.hand[0] ?? null,
+    },
+  ];
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      players,
+      round,
+      log,
+    },
+    privateEffects,
   };
 }

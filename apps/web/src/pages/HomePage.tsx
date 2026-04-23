@@ -1,7 +1,5 @@
 import { Dice3 } from "lucide-react";
 
-import type { LoveLetterMode } from "@game-site/shared";
-
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
 
 type HomePageProps = {
@@ -12,13 +10,11 @@ type HomePageProps = {
     available: boolean;
   }>;
   selectedGame: string | null;
-  selectedMode: LoveLetterMode;
   playerName: string;
   joinCode: string;
   pendingAction: "create" | "join" | null;
   message: string;
   onSelectGame: (gameId: string) => void;
-  onSelectMode: (mode: LoveLetterMode) => void;
   onPlayerNameChange: (value: string) => void;
   onJoinCodeChange: (value: string) => void;
   onCreateRoom: () => void;
@@ -28,13 +24,11 @@ type HomePageProps = {
 export function HomePage({
   games,
   selectedGame,
-  selectedMode,
   playerName,
   joinCode,
   pendingAction,
   message,
   onSelectGame,
-  onSelectMode,
   onPlayerNameChange,
   onJoinCodeChange,
   onCreateRoom,
@@ -79,7 +73,7 @@ export function HomePage({
                     buttonClassName="info-trigger-button info-trigger-button-home"
                     buttonLabel="Rules & Cards"
                     buttonTitle="Open Love Letter rules and card guide"
-                    mode={selectedMode}
+                    mode={null}
                   />
                 ) : null}
               </div>
@@ -94,28 +88,6 @@ export function HomePage({
                   placeholder="Enter your name to join the table..." 
                 />
               </label>
-
-              {activeGame.id === "love-letter" ? (
-                <div className="mode-picker">
-                  <span className="mode-picker-label">Mode</span>
-                  <div className="mode-picker-options">
-                    <button
-                      type="button"
-                      className={`mode-pill ${selectedMode === "classic" ? "is-selected" : ""}`}
-                      onClick={() => onSelectMode("classic")}
-                    >
-                      Classic (2-4 people)
-                    </button>
-                    <button
-                      type="button"
-                      className={`mode-pill ${selectedMode === "premium" ? "is-selected" : ""}`}
-                      onClick={() => onSelectMode("premium")}
-                    >
-                      Premium (5-8 people)
-                    </button>
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             <div className="action-split">

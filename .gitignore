@@ -3,3 +3,8 @@ dist/
 *.tsbuildinfo
 
 *.pdf
+
+*.ds_store
+*.log
+*.env
+*.env.local

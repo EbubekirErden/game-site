@@ -20,6 +20,15 @@ type PersistedSession = {
   roomId: string | null;
 };
 
+export type RoomChatMessage = {
+  id: string;
+  roomId: string;
+  playerId: string;
+  playerName: string;
+  text: string;
+  createdAt: number;
+};
+
 const GAMES = [
   {
     id: "love-letter",
@@ -133,6 +142,7 @@ export function App() {
   const [pendingAction, setPendingAction] = React.useState<"create" | "join" | null>(null);
   const [message, setMessage] = React.useState("Enter your name, then create or join a room.");
   const [activeEffectPresentation, setActiveEffectPresentation] = React.useState<PrivateEffectPresentation | null>(null);
+  const [chatMessages, setChatMessages] = React.useState<RoomChatMessage[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = React.useState<string | null>(null);
   const [selectedTargetPlayerIds, setSelectedTargetPlayerIds] = React.useState<string[]>([]);
   const [guessedValue, setGuessedValue] = React.useState("2");
@@ -229,10 +239,23 @@ export function App() {
       setActiveEffectPresentation(effect);
     };
 
+    const onChatHistory = (messages: RoomChatMessage[]) => {
+      setChatMessages(messages);
+    };
+
+    const onChatMessage = (chatMessage: RoomChatMessage) => {
+      setChatMessages((current) => {
+        if (current.some((existing) => existing.id === chatMessage.id)) return current;
+        return [...current, chatMessage].slice(-80);
+      });
+    };
+
     socket.on("connect", onConnect);
     socket.on("state", onState);
     socket.on("action:error", onError);
     socket.on("action:effect", onEffect);
+    socket.on("chat:history", onChatHistory);
+    socket.on("chat:message", onChatMessage);
     socket.on("connect_error", onConnectError);
     socket.on("disconnect", onDisconnect);
 
@@ -241,6 +264,8 @@ export function App() {
       socket.off("state", onState);
       socket.off("action:error", onError);
       socket.off("action:effect", onEffect);
+      socket.off("chat:history", onChatHistory);
+      socket.off("chat:message", onChatMessage);
       socket.off("connect_error", onConnectError);
       socket.off("disconnect", onDisconnect);
     };
@@ -442,6 +467,29 @@ export function App() {
     });
   }
 
+  function handleSendChatMessage(text: string): Promise<boolean> {
+    if (!state) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit(
+        "chat:send",
+        {
+          roomId: state.roomId,
+          text,
+        },
+        (response: { ok: boolean; reason?: string }) => {
+          if (!response.ok) {
+            setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+            resolve(false);
+            return;
+          }
+
+          resolve(true);
+        },
+      );
+    });
+  }
+
   function handleLeaveRoom(backToGames: boolean) {
     if (state) {
       socket.emit("room:leave", { roomId: state.roomId });
@@ -451,6 +499,7 @@ export function App() {
     setSavedRoomId(null);
     setPendingAction(null);
     setActiveEffectPresentation(null);
+    setChatMessages([]);
     setSelectedInstanceId(null);
     setSelectedTargetPlayerIds([]);
     setGuessedValue("2");
@@ -513,6 +562,8 @@ export function App() {
               onPlayCard={handlePlayCard}
               onDismissEffect={handleDismissEffect}
               onCardinalPeek={handleCardinalPeek}
+              chatMessages={chatMessages}
+              onSendChatMessage={handleSendChatMessage}
               onLeaveRoom={() => handleLeaveRoom(false)}
             />
           ) : routeRoomId && savedRoomId === routeRoomId && Boolean(playerName.trim()) ? (

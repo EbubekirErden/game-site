@@ -11,10 +11,21 @@ const io = new Server(httpServer, {
 });
 
 const rooms = new Map<string, ReturnType<typeof createGame>>();
+const roomChats = new Map<string, ChatMessage[]>();
 const playerBySocketId = new Map<string, { roomId: string; playerId: string }>();
 const activeSocketByPlayerKey = new Map<string, string>();
 const pendingRemovalByPlayerKey = new Map<string, NodeJS.Timeout>();
 const DISCONNECT_GRACE_MS = 30_000;
+const MAX_CHAT_HISTORY = 80;
+
+type ChatMessage = {
+  id: string;
+  roomId: string;
+  playerId: string;
+  playerName: string;
+  text: string;
+  createdAt: number;
+};
 
 function getPlayerKey(roomId: string, playerId: string): string {
   return `${roomId}:${playerId}`;
@@ -48,6 +59,7 @@ function removePlayerFromRoom(roomId: string, playerId: string): void {
     : removeSpectator(game, playerId);
   if (next.players.length === 0 && next.spectators.length === 0) {
     rooms.delete(roomId);
+    roomChats.delete(roomId);
     return;
   }
 
@@ -110,6 +122,18 @@ function emitRoomState(roomId: string): void {
   }
 }
 
+function getParticipantName(game: ReturnType<typeof createGame>, playerId: string): string | null {
+  return (
+    game.players.find((player) => player.id === playerId)?.name ??
+    game.spectators.find((spectator) => spectator.id === playerId)?.name ??
+    null
+  );
+}
+
+function emitChatHistory(roomId: string, playerId: string): void {
+  io.to(getPlayerKey(roomId, playerId)).emit("chat:history", roomChats.get(roomId) ?? []);
+}
+
 io.on("connection", (socket) => {
   socket.on("room:create", ({ name, playerId, mode }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const roomId = generateRoomCode();
@@ -127,6 +151,7 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     socket.join(getPlayerKey(roomId, normalizedPlayerId));
     emitRoomState(roomId);
+    emitChatHistory(roomId, normalizedPlayerId);
     respond?.({ ok: true, roomId });
   });
 
@@ -152,6 +177,7 @@ io.on("connection", (socket) => {
     socket.join(normalizedRoomId);
     socket.join(getPlayerKey(normalizedRoomId, normalizedPlayerId));
     emitRoomState(normalizedRoomId);
+    emitChatHistory(normalizedRoomId, normalizedPlayerId);
     respond?.({ ok: true, roomId: normalizedRoomId });
   });
 
@@ -177,7 +203,48 @@ io.on("connection", (socket) => {
     socket.join(normalizedRoomId);
     socket.join(getPlayerKey(normalizedRoomId, normalizedPlayerId));
     emitRoomState(normalizedRoomId);
+    emitChatHistory(normalizedRoomId, normalizedPlayerId);
     respond?.({ ok: true, roomId: normalizedRoomId });
+  });
+
+  socket.on("chat:send", ({ roomId, text }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const game = rooms.get(normalizedRoomId);
+    if (!game) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const playerName = getParticipantName(game, binding.playerId);
+    if (!playerName) {
+      respond?.({ ok: false, reason: "player_not_found" });
+      return;
+    }
+
+    const trimmedText = String(text ?? "").trim().replace(/\s+/g, " ");
+    if (!trimmedText) {
+      respond?.({ ok: false, reason: "empty_message" });
+      return;
+    }
+
+    const message: ChatMessage = {
+      id: `${Date.now()}-${binding.playerId}-${randomBytes(4).toString("hex")}`,
+      roomId: normalizedRoomId,
+      playerId: binding.playerId,
+      playerName,
+      text: trimmedText.slice(0, 240),
+      createdAt: Date.now(),
+    };
+    const nextHistory = [...(roomChats.get(normalizedRoomId) ?? []), message].slice(-MAX_CHAT_HISTORY);
+    roomChats.set(normalizedRoomId, nextHistory);
+    io.to(normalizedRoomId).emit("chat:message", message);
+    respond?.({ ok: true });
   });
 
   socket.on("room:set-ready", ({ roomId, isReady }) => {

@@ -829,6 +829,7 @@ input::placeholder {
 
 .table-right-sidebar {
   align-self: start;
+  max-height: calc(100vh - 132px);
 }
 
 .game-panel {
@@ -1499,11 +1500,10 @@ input::placeholder {
 }
 
 .activity-panel { 
-  flex: 1; 
+  flex: 1 1 52%; 
   display: flex; 
   flex-direction: column;
   min-height: 0;
-  max-height: calc(100vh - 132px);
   overflow: hidden;
 }
 .activity-feed { 
@@ -1646,6 +1646,94 @@ input::placeholder {
   border: 1px solid var(--player-chip-border);
   color: var(--player-chip-text);
   white-space: nowrap;
+}
+
+.chat-panel {
+  flex: 1 1 48%;
+  min-height: 300px;
+  overflow: hidden;
+}
+
+.chat-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.chat-empty {
+  color: #8d99a8;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.chat-message {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 20, 26, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chat-message.is-self {
+  background: rgba(31, 111, 235, 0.12);
+  border-color: rgba(31, 111, 235, 0.24);
+}
+
+.chat-message-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chat-player-name {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  background: var(--chat-player-background);
+  border: 1px solid var(--chat-player-border);
+  color: var(--chat-player-text);
+  white-space: nowrap;
+}
+
+.chat-message time {
+  color: #768698;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.chat-message p {
+  margin: 0;
+  color: #d8e2ec;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chat-form input {
+  min-width: 0;
+}
+
+.chat-send-button {
+  width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .effect-reminder-panel {

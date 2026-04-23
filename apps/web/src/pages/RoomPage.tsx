@@ -20,6 +20,8 @@ import { ActivityFeed } from "../components/ActivityFeed.js";
 import { CardView } from "../components/CardView.js";
 import { DiscardResolutionOverlay } from "../components/DiscardResolutionOverlay.js";
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
+import { RoomChat } from "../components/RoomChat.js";
+import type { RoomChatMessage } from "../app/App.js";
 import { cardNamesByValue, playerNameById } from "../lib/gamePresentation.js";
 
 type RoomPageProps = {
@@ -40,6 +42,8 @@ type RoomPageProps = {
   onPlayCard: () => Promise<boolean>;
   onDismissEffect: () => void;
   onCardinalPeek: (targetPlayerId: string) => Promise<boolean>;
+  chatMessages: RoomChatMessage[];
+  onSendChatMessage: (text: string) => Promise<boolean>;
   onLeaveRoom: () => void;
 };
 
@@ -61,6 +65,8 @@ export function RoomPage({
   onPlayCard,
   onDismissEffect,
   onCardinalPeek,
+  chatMessages,
+  onSendChatMessage,
   onLeaveRoom,
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
@@ -834,6 +840,7 @@ export function RoomPage({
             <h3>Activity Log</h3>
             <ActivityFeed events={state.log || []} state={state} />
           </section>
+          <RoomChat messages={chatMessages} state={state} onSendMessage={onSendChatMessage} />
         </aside>
 
       </div>

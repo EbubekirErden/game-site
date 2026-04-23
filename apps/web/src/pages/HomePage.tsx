@@ -1,20 +1,21 @@
 import { Dice3 } from "lucide-react";
+import type { GameID } from "@game-site/shared/commonTypes";
 
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
 
 type HomePageProps = {
   games: Array<{
-    id: string;
+    id: GameID;
     title: string;
     description: string;
     available: boolean;
   }>;
-  selectedGame: string | null;
+  selectedGame: GameID | null;
   playerName: string;
   joinCode: string;
   pendingAction: "create" | "join" | null;
   message: string;
-  onSelectGame: (gameId: string) => void;
+  onSelectGame: (gameId: GameID) => void;
   onPlayerNameChange: (value: string) => void;
   onJoinCodeChange: (value: string) => void;
   onCreateRoom: () => void;

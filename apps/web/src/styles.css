@@ -7,6 +7,485 @@
   color: #f3f6f9;
 }
 
+.skull-layout {
+  min-height: 100vh;
+  padding: 20px;
+  background:
+    radial-gradient(circle at top, rgba(165, 102, 42, 0.24), transparent 36%),
+    linear-gradient(180deg, #101821 0%, #14202a 100%);
+}
+
+.skull-layout .table-workspace {
+  grid-template-columns: 210px minmax(0, 1fr) 390px;
+}
+
+.skull-layout .center-lobby {
+  min-height: 48vh;
+}
+
+.skull-layout .topbar-info {
+  flex-wrap: wrap;
+}
+
+.skull-layout .topbar-info h1 {
+  margin: 0;
+}
+
+.skull-topbar,
+.panel-header-inline,
+.skull-player-row,
+.skull-player-row-badges,
+.skull-topbar-main,
+.skull-bid-row,
+.skull-settings-row,
+.skull-lobby-actions,
+.skull-tigress-row,
+.skull-history-row {
+  display: flex;
+  align-items: center;
+}
+
+.skull-topbar,
+.panel-header-inline,
+.skull-topbar-main,
+.skull-bid-row,
+.skull-settings-row,
+.skull-lobby-actions,
+.skull-tigress-row,
+.skull-history-row {
+  justify-content: space-between;
+}
+
+.skull-topbar {
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.skull-topbar h1 {
+  margin: 0 0 6px;
+}
+
+.skull-topbar-main {
+  flex: 1;
+  gap: 18px;
+}
+
+.skull-topbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skull-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 255px) minmax(0, 1.45fr) minmax(360px, 430px);
+  gap: 16px;
+  align-items: start;
+}
+
+.skull-grid.is-lobby {
+  grid-template-columns: minmax(220px, 270px) minmax(420px, 620px) minmax(360px, 460px);
+}
+
+.skull-side-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.skull-center-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.skull-order-panel,
+.skull-center-panel,
+.skull-hand-panel,
+.skull-summary-panel {
+  min-height: 220px;
+}
+
+.skull-center-panel {
+  min-height: 280px;
+}
+
+.skull-hand-panel {
+  min-height: 240px;
+}
+
+.skull-player-list,
+.skull-trick-history,
+.skull-settings,
+.skull-lobby-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.skull-settings h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #cdd8e6;
+}
+
+.slim-panel .skull-settings {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.skull-lobby-actions {
+  justify-items: stretch;
+  gap: 8px;
+}
+
+.skull-lobby-actions > button {
+  width: 100%;
+}
+
+.skull-lobby-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 220px));
+  gap: 18px;
+  align-items: stretch;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px 0 12px;
+}
+
+.skull-lobby-stat-card {
+  min-height: 170px;
+  padding: 24px 18px;
+  border-radius: 22px;
+  border: 1px solid #465870;
+  background: rgba(22, 31, 44, 0.72);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.skull-lobby-stat-card strong {
+  display: block;
+  width: 100%;
+  font-size: clamp(2.5rem, 4vw, 3.4rem);
+  line-height: 1.08;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+.skull-lobby-stat-card span {
+  display: block;
+  width: 100%;
+  font-size: 0.96rem;
+  line-height: 1.25;
+  color: #8db6f5;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.skull-player-row {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(131, 146, 166, 0.22);
+  border-radius: 8px;
+  background: rgba(17, 24, 33, 0.72);
+}
+
+.skull-player-row.is-current {
+  border-color: rgba(255, 185, 92, 0.72);
+  box-shadow: 0 0 0 1px rgba(255, 185, 92, 0.2);
+}
+
+.skull-player-row.is-self {
+  background: rgba(24, 38, 51, 0.88);
+}
+
+.skull-player-row-main {
+  display: grid;
+  gap: 4px;
+}
+
+.mini-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(86, 104, 126, 0.24);
+  border: 1px solid rgba(124, 143, 166, 0.2);
+  color: #d6deea;
+  font-size: 0.78rem;
+}
+
+.mini-pill.is-hot {
+  background: rgba(255, 169, 77, 0.18);
+  border-color: rgba(255, 169, 77, 0.36);
+  color: #ffd4a0;
+}
+
+.skull-timer-shell {
+  min-width: 210px;
+  display: grid;
+  grid-template-columns: auto auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(14, 22, 31, 0.82);
+  border: 1px solid rgba(131, 146, 166, 0.18);
+}
+
+.skull-timer-bar {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(61, 76, 95, 0.65);
+}
+
+.skull-timer-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #69b7ff 0%, #2fd0a4 100%);
+  transition: width 160ms linear;
+}
+
+.skull-timer-fill.is-danger {
+  background: linear-gradient(90deg, #ffb04d 0%, #ff6b6b 100%);
+}
+
+.skull-trick-table {
+  min-height: 240px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.skull-trick-card,
+.skull-hand-card {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(131, 146, 166, 0.22);
+  background:
+    linear-gradient(180deg, rgba(248, 239, 224, 0.98), rgba(224, 205, 176, 0.94));
+  color: #17222d;
+  text-align: left;
+}
+
+.skull-trick-card.is-winning {
+  border-color: rgba(255, 177, 66, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 177, 66, 0.2);
+}
+
+.skull-winning-badge {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #ffb142;
+  color: #18212b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.skull-trick-player {
+  color: #72542c;
+  font-size: 0.82rem;
+}
+
+.skull-empty-trick {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border: 1px dashed rgba(131, 146, 166, 0.28);
+  border-radius: 8px;
+  color: #8fa2b6;
+}
+
+.skull-lobby-placeholder {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+}
+
+.skull-lobby-placeholder-inner {
+  max-width: 360px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+  color: #9fb0c3;
+}
+
+.skull-lobby-placeholder-inner h3,
+.skull-lobby-placeholder-inner p {
+  margin: 0;
+}
+
+.skull-bid-controls,
+.skull-hand-list {
+  display: grid;
+  gap: 12px;
+}
+
+.skull-hand-list {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.skull-hand-card {
+  min-height: 108px;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.skull-hand-card:hover:not(:disabled),
+.skull-hand-card.is-selected {
+  transform: translateY(-2px);
+  border-color: rgba(84, 153, 255, 0.65);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+.skull-hand-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.skull-bid-panel,
+.skull-settings {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(131, 146, 166, 0.15);
+}
+
+.skull-settings-section {
+  display: grid;
+  gap: 8px;
+}
+
+.skull-timer-stepper {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 8px;
+  align-items: center;
+}
+
+.icon-step-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 143, 166, 0.22);
+  background: rgba(20, 31, 43, 0.85);
+  color: #d6deea;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.icon-step-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.skull-timer-card {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 143, 166, 0.18);
+  background: rgba(17, 24, 33, 0.78);
+  color: #e9eff8;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.skull-mode-cards {
+  display: grid;
+  gap: 8px;
+}
+
+.skull-mode-card {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(124, 143, 166, 0.18);
+  background: rgba(17, 24, 33, 0.72);
+  color: #d5deea;
+  text-align: left;
+}
+
+.skull-mode-card strong {
+  font-size: 0.98rem;
+}
+
+.skull-mode-card span {
+  color: #96a8bb;
+  font-size: 0.82rem;
+  line-height: 1.28;
+}
+
+.skull-mode-card:hover {
+  border-color: rgba(105, 152, 255, 0.38);
+  background: rgba(22, 33, 47, 0.84);
+}
+
+.skull-mode-card.is-selected {
+  border-color: rgba(105, 152, 255, 0.62);
+  box-shadow: 0 0 0 1px rgba(105, 152, 255, 0.16);
+  background: rgba(31, 53, 87, 0.55);
+}
+
+.skull-history-row {
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(131, 146, 166, 0.12);
+}
+
+@media (max-width: 1260px) {
+  .skull-layout .table-workspace,
+  .skull-grid {
+    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  }
+
+  .skull-center-stack,
+  .skull-side-stack {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 860px) {
+  .skull-layout {
+    padding: 14px;
+  }
+
+  .skull-topbar,
+  .skull-topbar-main,
+  .skull-grid {
+    display: grid;
+  }
+
+  .skull-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skull-timer-shell {
+    min-width: 0;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

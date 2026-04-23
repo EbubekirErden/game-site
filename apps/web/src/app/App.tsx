@@ -2,12 +2,15 @@ import React from "react";
 import { Navigate, Route, Routes, matchPath, useLocation, useNavigate } from "react-router-dom";
 
 import { GAME_DEFINITIONS, getCardDef } from "@game-site/shared";
-import type { LoveLetterMode, PrivateEffectPresentation, PlayerViewState } from "@game-site/shared";
+import type { LoveLetterMode, PrivateEffectPresentation, PlayerViewState as LoveLetterPlayerViewState } from "@game-site/shared";
+import type { GameID } from "@game-site/shared/commonTypes";
+import type { SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
 
 import { formatErrorReason } from "../lib/gamePresentation.js";
 import { socket } from "../lib/socket.js";
 import { HomePage } from "../pages/HomePage.js";
 import { RoomPage } from "../pages/RoomPage.js";
+import { SkullKingRoomPage } from "../pages/SkullKingRoomPage.js";
 import "../styles.css";
 
 const SESSION_STORAGE_KEY = "game-site:session";
@@ -15,10 +18,12 @@ const SESSION_STORAGE_KEY = "game-site:session";
 type PersistedSession = {
   playerId: string;
   playerName: string;
-  selectedGame: string | null;
+  selectedGame: GameID | null;
   selectedMode: LoveLetterMode;
   roomId: string | null;
 };
+
+type AppGameState = LoveLetterPlayerViewState | SkullKingPlayerViewState;
 
 export type RoomChatMessage = {
   id: string;
@@ -36,7 +41,7 @@ const GAMES = [
   },
   {
     ...GAME_DEFINITIONS["skull-king"],
-    available: false,
+    available: true,
   },
 ];
 
@@ -96,13 +101,16 @@ function writePersistedSession(session: PersistedSession): void {
   window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
 }
 
-function getPhaseMessage(phase: PlayerViewState["phase"], selfRole: PlayerViewState["selfRole"]): string {
+function getPhaseMessage(gameId: AppGameState["gameId"], phase: AppGameState["phase"], selfRole: AppGameState["selfRole"]): string {
   if (selfRole === "spectator") {
     if (phase === "match_over") return "Match over. The host can return everyone to the lobby.";
     return "You are watching as a spectator. You can join as a player when the match returns to lobby.";
   }
 
   if (phase === "lobby") {
+    if (gameId === "skull-king") {
+      return "At least 2 people are needed, and every player must be ready before the host can start the round.";
+    }
     return "Room ready. Players can toggle ready.";
   }
 
@@ -117,6 +125,14 @@ function getPhaseMessage(phase: PlayerViewState["phase"], selfRole: PlayerViewSt
   return "Game in progress.";
 }
 
+function isLoveLetterState(state: AppGameState | null): state is LoveLetterPlayerViewState {
+  return Boolean(state && state.gameId === "love-letter");
+}
+
+function isSkullKingState(state: AppGameState | null): state is SkullKingPlayerViewState {
+  return Boolean(state && state.gameId === "skull-king");
+}
+
 export function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -129,12 +145,12 @@ export function App() {
   }
   const initialSession = initialSessionRef.current;
   const playerIdRef = React.useRef(initialSession.playerId);
-  const [selectedGame, setSelectedGame] = React.useState<string | null>(() => (routeGameId === "love-letter" || routeGameId === "skull-king" ? routeGameId : initialSession.selectedGame));
+  const [selectedGame, setSelectedGame] = React.useState<GameID | null>(() => (routeGameId === "love-letter" || routeGameId === "skull-king" ? routeGameId : initialSession.selectedGame));
   const [selectedMode, setSelectedMode] = React.useState<LoveLetterMode>(initialSession.selectedMode);
   const [playerName, setPlayerName] = React.useState(initialSession.playerName);
   const [joinCode, setJoinCode] = React.useState(() => routeRoomId ?? initialSession.roomId ?? "");
   const [savedRoomId, setSavedRoomId] = React.useState<string | null>(initialSession.roomId);
-  const [state, setState] = React.useState<PlayerViewState | null>(null);
+  const [state, setState] = React.useState<AppGameState | null>(null);
   const [pendingAction, setPendingAction] = React.useState<"create" | "join" | null>(null);
   const [message, setMessage] = React.useState("Enter your name, then create or join a room.");
   const [activeEffectPresentation, setActiveEffectPresentation] = React.useState<PrivateEffectPresentation | null>(null);
@@ -193,15 +209,17 @@ export function App() {
   }, [routeRoomId]);
 
   React.useEffect(() => {
-    const onState = (nextState: PlayerViewState) => {
+    const onState = (nextState: AppGameState) => {
       setState(nextState);
       setSelectedGame(nextState.gameId);
-      setSelectedMode(nextState.mode);
+      if (nextState.gameId === "love-letter") {
+        setSelectedMode(nextState.mode);
+      }
       setPendingAction(null);
       setJoinCode(nextState.roomId);
       setSavedRoomId(nextState.roomId);
       reconnectAttemptRef.current = null;
-      setMessage(getPhaseMessage(nextState.phase, nextState.selfRole));
+      setMessage(getPhaseMessage(nextState.gameId, nextState.phase, nextState.selfRole));
       if (location.pathname !== `/games/${nextState.gameId}/rooms/${nextState.roomId}`) {
         navigate(`/games/${nextState.gameId}/rooms/${nextState.roomId}`, { replace: true });
       }
@@ -315,7 +333,7 @@ export function App() {
   }
 
   function handleSetMode(mode: LoveLetterMode) {
-    if (!state) return;
+    if (!isLoveLetterState(state)) return;
 
     socket.emit("room:set-mode", {
       roomId: state.roomId,
@@ -383,7 +401,7 @@ export function App() {
   }
 
   function handlePlayCard(): Promise<boolean> {
-    if (!state) return Promise.resolve(false);
+    if (!isLoveLetterState(state)) return Promise.resolve(false);
 
     const self = state.players.find((player) => player.id === state.selfPlayerId);
     const selectedCard = self?.hand.find((card) => card.instanceId === selectedInstanceId);
@@ -441,7 +459,7 @@ export function App() {
   }
 
   function handleCardinalPeek(targetPlayerId: string): Promise<boolean> {
-    if (!state) return Promise.resolve(false);
+    if (!isLoveLetterState(state)) return Promise.resolve(false);
 
     return new Promise((resolve) => {
       socket.emit(
@@ -483,6 +501,74 @@ export function App() {
           resolve(true);
         },
       );
+    });
+  }
+
+  function handleSkullBid(bid: number): Promise<boolean> {
+    if (!isSkullKingState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit("skull:bid", { roomId: state.roomId, bid }, (response: { ok: boolean; reason?: string }) => {
+        if (!response.ok) {
+          setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+          resolve(false);
+          return;
+        }
+
+        resolve(true);
+      });
+    });
+  }
+
+  function handleSkullPlayCard(instanceId: string, tigressMode?: TigressPlayMode): Promise<boolean> {
+    if (!isSkullKingState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit("skull:play-card", { roomId: state.roomId, instanceId, tigressMode }, (response: { ok: boolean; reason?: string }) => {
+        if (!response.ok) {
+          setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+          resolve(false);
+          return;
+        }
+
+        resolve(true);
+      });
+    });
+  }
+
+  function handleSkullSettings(settings: { turnDurationSeconds?: number; orderMode?: "fixed" | "reverse_each_round" | "rotate_each_round" }): Promise<boolean> {
+    if (!isSkullKingState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit("skull:update-settings", { roomId: state.roomId, settings }, (response: { ok: boolean; reason?: string }) => {
+        if (!response.ok) {
+          setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+          resolve(false);
+          return;
+        }
+
+        resolve(true);
+      });
+    });
+  }
+
+  function handleSkullTimeoutBid(): Promise<boolean> {
+    if (!isSkullKingState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit("skull:timeout-bid", { roomId: state.roomId }, (response: { ok: boolean; reason?: string }) => {
+        resolve(Boolean(response.ok));
+      });
+    });
+  }
+
+  function handleSkullTimeoutPlay(): Promise<boolean> {
+    if (!isSkullKingState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit("skull:timeout-play", { roomId: state.roomId }, (response: { ok: boolean; reason?: string }) => {
+        resolve(Boolean(response.ok));
+      });
     });
   }
 
@@ -534,34 +620,46 @@ export function App() {
         path="/games/:gameId/rooms/:roomId"
         element={
           state && routeRoomId === state.roomId ? (
-            <RoomPage
-              state={state}
-              gameTitle={
-                selectedGame === "love-letter"
-                  ? state.mode === "premium"
-                    ? "Love Letter Premium"
-                    : "Love Letter"
-                  : "Game Room"
-              }
-              message={message}
-              activeEffectPresentation={activeEffectPresentation}
-              selectedInstanceId={selectedInstanceId}
-              selectedTargetPlayerIds={selectedTargetPlayerIds}
-              guessedValue={guessedValue}
-              onSelectCard={setSelectedInstanceId}
-              onTargetPlayerIdsChange={setSelectedTargetPlayerIds}
-              onGuessedValueChange={setGuessedValue}
-              onToggleReady={handleToggleReady}
-              onSetMode={handleSetMode}
-              onStartRound={handleStartRound}
-              onReturnToLobby={handleReturnToLobby}
-              onPlayCard={handlePlayCard}
-              onDismissEffect={handleDismissEffect}
-              onCardinalPeek={handleCardinalPeek}
-              chatMessages={chatMessages}
-              onSendChatMessage={handleSendChatMessage}
-              onLeaveRoom={() => handleLeaveRoom(false)}
-            />
+            isLoveLetterState(state) ? (
+              <RoomPage
+                state={state}
+                gameTitle={state.mode === "premium" ? "Love Letter Premium" : "Love Letter"}
+                message={message}
+                activeEffectPresentation={activeEffectPresentation}
+                selectedInstanceId={selectedInstanceId}
+                selectedTargetPlayerIds={selectedTargetPlayerIds}
+                guessedValue={guessedValue}
+                onSelectCard={setSelectedInstanceId}
+                onTargetPlayerIdsChange={setSelectedTargetPlayerIds}
+                onGuessedValueChange={setGuessedValue}
+                onToggleReady={handleToggleReady}
+                onSetMode={handleSetMode}
+                onStartRound={handleStartRound}
+                onReturnToLobby={handleReturnToLobby}
+                onPlayCard={handlePlayCard}
+                onDismissEffect={handleDismissEffect}
+                onCardinalPeek={handleCardinalPeek}
+                chatMessages={chatMessages}
+                onSendChatMessage={handleSendChatMessage}
+                onLeaveRoom={() => handleLeaveRoom(false)}
+              />
+            ) : isSkullKingState(state) ? (
+              <SkullKingRoomPage
+                state={state}
+                message={message}
+                chatMessages={chatMessages}
+                onSendChatMessage={handleSendChatMessage}
+                onLeaveRoom={() => handleLeaveRoom(false)}
+                onToggleReady={handleToggleReady}
+                onStartRound={handleStartRound}
+                onReturnToLobby={handleReturnToLobby}
+                onSubmitBid={handleSkullBid}
+                onPlayCard={handleSkullPlayCard}
+                onTimeoutBid={handleSkullTimeoutBid}
+                onTimeoutPlay={handleSkullTimeoutPlay}
+                onUpdateSettings={handleSkullSettings}
+              />
+            ) : null
           ) : routeRoomId && savedRoomId === routeRoomId && Boolean(playerName.trim()) ? (
             <main className="hub-layout">
               <section className="hub-main">

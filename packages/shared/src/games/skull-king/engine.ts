@@ -438,3 +438,23 @@ export function removeSpectator(state: SkullKingGameState, playerId: PlayerID): 
     spectators: state.spectators.filter((spectator) => spectator.id !== playerId),
   };
 }
+
+export function resetMatchToLobby(state: SkullKingGameState): SkullKingGameState {
+  return {
+    ...state,
+    phase: "lobby",
+    players: state.players.map((player) => ({
+      ...player,
+      hand: [],
+      bid: null,
+      tricksWon: 0,
+      roundScore: 0,
+      bonusScore: 0,
+      totalScore: 0,
+      isReady: false,
+    })),
+    round: null,
+    completedRoundCount: 0,
+    matchWinnerIds: [],
+  };
+}

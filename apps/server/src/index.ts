@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { Server } from "socket.io";
 
+import { isGameId } from "@game-site/shared";
 import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
 
 const httpServer = createServer();
@@ -135,11 +136,17 @@ function emitChatHistory(roomId: string, playerId: string): void {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:create", ({ name, playerId, mode }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
+  socket.on("room:create", ({ name, playerId, mode, gameId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const roomId = generateRoomCode();
     const normalizedPlayerId = String(playerId ?? "").trim();
     if (!normalizedPlayerId) {
       respond?.({ ok: false, reason: "invalid_action" });
+      return;
+    }
+
+    const normalizedGameId = isGameId(gameId) ? gameId : "love-letter";
+    if (normalizedGameId !== "love-letter") {
+      respond?.({ ok: false, reason: "game_not_available" });
       return;
     }
 

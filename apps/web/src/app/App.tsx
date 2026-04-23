@@ -1,7 +1,7 @@
 import React from "react";
 import { Navigate, Route, Routes, matchPath, useLocation, useNavigate } from "react-router-dom";
 
-import { getCardDef } from "@game-site/shared";
+import { GAME_DEFINITIONS, getCardDef } from "@game-site/shared";
 import type { LoveLetterMode, PrivateEffectPresentation, PlayerViewState } from "@game-site/shared";
 
 import { formatErrorReason } from "../lib/gamePresentation.js";
@@ -31,15 +31,11 @@ export type RoomChatMessage = {
 
 const GAMES = [
   {
-    id: "love-letter",
-    title: "Love Letter",
-    description: "Classic deduction card game",
+    ...GAME_DEFINITIONS["love-letter"],
     available: true,
   },
   {
-    id: "coming-soon",
-    title: "More Games Soon",
-    description: "This page is structured to support additional games.",
+    ...GAME_DEFINITIONS["skull-king"],
     available: false,
   },
 ];
@@ -79,7 +75,7 @@ function readPersistedSession(): PersistedSession {
     return {
       playerId: typeof parsed.playerId === "string" && parsed.playerId ? parsed.playerId : createPlayerId(),
       playerName: typeof parsed.playerName === "string" ? parsed.playerName : "",
-      selectedGame: parsed.selectedGame === "love-letter" ? parsed.selectedGame : null,
+      selectedGame: parsed.selectedGame === "love-letter" || parsed.selectedGame === "skull-king" ? parsed.selectedGame : null,
       selectedMode: parsed.selectedMode === "premium" ? "premium" : "classic",
       roomId: typeof parsed.roomId === "string" && parsed.roomId ? parsed.roomId : null,
     };
@@ -133,7 +129,7 @@ export function App() {
   }
   const initialSession = initialSessionRef.current;
   const playerIdRef = React.useRef(initialSession.playerId);
-  const [selectedGame, setSelectedGame] = React.useState<string | null>(() => (routeGameId === "love-letter" ? "love-letter" : initialSession.selectedGame));
+  const [selectedGame, setSelectedGame] = React.useState<string | null>(() => (routeGameId === "love-letter" || routeGameId === "skull-king" ? routeGameId : initialSession.selectedGame));
   const [selectedMode, setSelectedMode] = React.useState<LoveLetterMode>(initialSession.selectedMode);
   const [playerName, setPlayerName] = React.useState(initialSession.playerName);
   const [joinCode, setJoinCode] = React.useState(() => routeRoomId ?? initialSession.roomId ?? "");
@@ -199,15 +195,15 @@ export function App() {
   React.useEffect(() => {
     const onState = (nextState: PlayerViewState) => {
       setState(nextState);
-      setSelectedGame("love-letter");
+      setSelectedGame(nextState.gameId);
       setSelectedMode(nextState.mode);
       setPendingAction(null);
       setJoinCode(nextState.roomId);
       setSavedRoomId(nextState.roomId);
       reconnectAttemptRef.current = null;
       setMessage(getPhaseMessage(nextState.phase, nextState.selfRole));
-      if (location.pathname !== `/games/love-letter/rooms/${nextState.roomId}`) {
-        navigate(`/games/love-letter/rooms/${nextState.roomId}`, { replace: true });
+      if (location.pathname !== `/games/${nextState.gameId}/rooms/${nextState.roomId}`) {
+        navigate(`/games/${nextState.gameId}/rooms/${nextState.roomId}`, { replace: true });
       }
     };
 
@@ -277,8 +273,8 @@ export function App() {
   }, [attemptReconnect, savedRoomId, state?.roomId]);
 
   React.useEffect(() => {
-    if (routeGameId === "love-letter") {
-      setSelectedGame("love-letter");
+    if (routeGameId === "love-letter" || routeGameId === "skull-king") {
+      setSelectedGame(routeGameId);
     }
   }, [routeGameId]);
 
@@ -303,7 +299,7 @@ export function App() {
 
     setPendingAction("create");
     setMessage("Creating room...");
-    socket.emit("room:create", { name: trimmedName, playerId: playerIdRef.current, mode: "classic" }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
+    socket.emit("room:create", { name: trimmedName, playerId: playerIdRef.current, gameId: selectedGame, mode: "classic" }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
       if (!response.ok) {
         setPendingAction(null);
         setMessage(formatErrorReason(response.reason ?? "invalid_action"));

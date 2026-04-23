@@ -4,6 +4,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./commonTypes": "./src/commonTypes.ts",
+    "./games/registry": "./src/games/registry.ts",
+    "./games/love-letter": "./src/games/love-letter/index.ts",
+    "./games/love-letter/cards": "./src/games/love-letter/cards.ts",
+    "./games/love-letter/engine": "./src/games/love-letter/engine.ts",
+    "./games/love-letter/rules": "./src/games/love-letter/rules.ts",
+    "./games/love-letter/types": "./src/games/love-letter/types.ts",
     "./cards": "./src/cards.ts",
     "./engine": "./src/engine.ts",
     "./rules": "./src/rules.ts",

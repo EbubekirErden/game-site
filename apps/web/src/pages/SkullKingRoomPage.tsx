@@ -1,9 +1,11 @@
 import React from "react";
-import { Anchor, Check, ChevronLeft, ChevronRight, Clock3, Copy, Crown, Flag, Hand, RefreshCcw, Rocket } from "lucide-react";
+import { Anchor, Check, ChevronLeft, ChevronRight, Clock3, Copy, Crown, Flag, Hand, Info, RefreshCcw, Rocket } from "lucide-react";
 
 import type { SkullKingCardInstance, SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
 
 import { RoomChat } from "../components/RoomChat.js";
+import { SkullKingCardView } from "../components/SkullKingCardView.js";
+import { SkullKingInfoDrawer } from "../components/SkullKingInfoDrawer.js";
 import type { RoomChatMessage } from "../app/App.js";
 
 type SkullKingRoomPageProps = {
@@ -162,7 +164,7 @@ export function SkullKingRoomPage({
         <section className="game-panel slim-panel skull-order-panel">
           <div className="panel-header-inline">
             <h3>Order & Score</h3>
-            {state.round?.leadPlayerId ? <span className="mini-pill"><Anchor size={12} /> Lead: {state.players.find((player) => player.id === state.round?.leadPlayerId)?.name ?? "?"}</span> : null}
+            {state.round?.leadPlayerId ? <span className="mini-pill"><Anchor size={12} /> {state.players.find((player) => player.id === state.round?.leadPlayerId)?.name ?? "?"}</span> : null}
           </div>
           <div className="skull-player-list">
             {state.players.map((player, index) => (
@@ -171,11 +173,11 @@ export function SkullKingRoomPage({
                   <strong>
                     {index + 1}. {player.name} {player.id === state.creatorId ? <Crown size={13} strokeWidth={2.2} aria-hidden="true" /> : null}
                   </strong>
-                  <span className="muted-text">Bid {player.bid ?? "-"} | Tricks {player.tricksWon} | Score {player.totalScore}</span>
-                </div>
-                <div className="skull-player-row-badges">
-                  {state.round?.leadPlayerId === player.id ? <span className="mini-pill">Lead</span> : null}
-                  {state.round?.currentPlayerId === player.id ? <span className="mini-pill is-hot">Turn</span> : null}
+                  <span className="muted-text">
+                    Bid {player.bid ?? "-"} | Tricks {player.tricksWon} | Score {player.totalScore}
+                    {state.round?.leadPlayerId === player.id ? " | Lead" : ""}
+                    {state.round?.currentPlayerId === player.id ? " | Turn" : ""}
+                  </span>
                 </div>
               </div>
             ))}
@@ -289,6 +291,7 @@ export function SkullKingRoomPage({
                           <Flag size={14} strokeWidth={2.2} aria-hidden="true" />
                         </div>
                       ) : null}
+                      <SkullKingCardView card={play.card.card} compact />
                       <span className="skull-trick-player">{state.players.find((player) => player.id === play.playerId)?.name ?? play.playerId}</span>
                       <strong>{describeCard(play.card.card)}</strong>
                       <span>{cardSuitLabel(play.card.card)}</span>
@@ -316,17 +319,21 @@ export function SkullKingRoomPage({
                     {isMyTurn ? <span className="mini-pill is-hot">Your Turn</span> : null}
                   </div>
                   <div className="skull-bid-controls">
-                    <input
-                      type="range"
-                      min={0}
-                      max={state.round?.roundNumber ?? 1}
-                      step={1}
-                      value={selectedBid}
-                      onChange={(event) => setSelectedBid(Number(event.target.value))}
-                      disabled={!isMyTurn}
-                    />
+                    <div className="skull-bid-grid" role="group" aria-label="Choose your bid">
+                      {Array.from({ length: (state.round?.roundNumber ?? 1) + 1 }, (_, bidValue) => (
+                        <button
+                          key={bidValue}
+                          type="button"
+                          className={`skull-bid-option ${selectedBid === bidValue ? "is-selected" : ""}`}
+                          onClick={() => setSelectedBid(bidValue)}
+                          disabled={!isMyTurn}
+                          aria-pressed={selectedBid === bidValue}
+                        >
+                          {bidValue}
+                        </button>
+                      ))}
+                    </div>
                     <div className="skull-bid-row">
-                      <strong>{selectedBid}</strong>
                       <button type="button" className="primary-button" disabled={!isMyTurn} onClick={() => void onSubmitBid(selectedBid)}>
                         Submit Bid
                       </button>
@@ -344,9 +351,7 @@ export function SkullKingRoomPage({
                     onClick={() => setSelectedCardId((current) => (current === card.instanceId ? null : card.instanceId))}
                     disabled={!playing || !isMyTurn}
                   >
-                    <strong>{describeCard(card.card)}</strong>
-                    <span>{cardSuitLabel(card.card)}</span>
-                    {card.card.type === "number" ? <span className="mini-pill">{card.card.rank}</span> : null}
+                    <SkullKingCardView card={card.card} compact />
                   </button>
                 ))}
               </div>
@@ -413,6 +418,16 @@ export function SkullKingRoomPage({
           <RoomChat messages={chatMessages} state={state} onSendMessage={onSendChatMessage} />
         </aside>
       </div>
+      <SkullKingInfoDrawer
+        buttonClassName="info-trigger-button room-floating-info-button"
+        buttonLabel={
+          <>
+            <Info size={18} strokeWidth={2.3} aria-hidden="true" />
+            <span className="room-floating-info-label">Guide</span>
+          </>
+        }
+        buttonTitle="Open Skull King rules and card guide"
+      />
     </main>
   );
 }

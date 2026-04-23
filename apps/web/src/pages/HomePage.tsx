@@ -2,6 +2,7 @@ import { Dice3 } from "lucide-react";
 import type { GameID } from "@game-site/shared/commonTypes";
 
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
+import { SkullKingInfoDrawer } from "../components/SkullKingInfoDrawer.js";
 
 type HomePageProps = {
   games: Array<{
@@ -75,6 +76,12 @@ export function HomePage({
                     buttonLabel="Rules & Cards"
                     buttonTitle="Open Love Letter rules and card guide"
                     mode={null}
+                  />
+                ) : activeGame.id === "skull-king" ? (
+                  <SkullKingInfoDrawer
+                    buttonClassName="info-trigger-button info-trigger-button-home"
+                    buttonLabel="Rules & Cards"
+                    buttonTitle="Open Skull King rules and card guide"
                   />
                 ) : null}
               </div>

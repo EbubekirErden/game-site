@@ -18,7 +18,7 @@ export function buildSkullKingDeck(makeId: () => string): SkullKingCardInstance[
   const deck: SkullKingCardInstance[] = [];
 
   for (const suit of NUMBER_SUITS) {
-    for (let rank = 1; rank <= 13; rank += 1) {
+    for (let rank = 1; rank <= 14; rank += 1) {
       deck.push({
         instanceId: makeId(),
         card: { type: "number", suit, rank },

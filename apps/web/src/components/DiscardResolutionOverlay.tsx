@@ -19,7 +19,7 @@ function HiddenStack({ label, cardCount = 1, className = "" }: { label: string; 
           <img
             key={`${label}-${index}`}
             className="effect-stack-card"
-            src="/cards/cardback.png"
+            src="/love-letter/cards/cardback.png"
             alt=""
             style={{ "--stack-index": index } as React.CSSProperties}
             draggable={false}

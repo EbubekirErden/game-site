@@ -4,14 +4,22 @@ import { randomBytes } from "node:crypto";
 import { Server } from "socket.io";
 
 import { isGameId } from "@game-site/shared";
-import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/engine";
+import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
+import type { GameState as LoveLetterGameState } from "@game-site/shared/games/love-letter/types";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
-const rooms = new Map<string, ReturnType<typeof createGame>>();
+type LoveLetterRoomRecord = {
+  gameId: "love-letter";
+  state: LoveLetterGameState;
+};
+
+type RoomRecord = LoveLetterRoomRecord;
+
+const rooms = new Map<string, RoomRecord>();
 const roomChats = new Map<string, ChatMessage[]>();
 const playerBySocketId = new Map<string, { roomId: string; playerId: string }>();
 const activeSocketByPlayerKey = new Map<string, string>();
@@ -48,12 +56,25 @@ function bindSocketToPlayer(socketId: string, roomId: string, playerId: string):
   clearPendingRemoval(roomId, playerId);
 }
 
+function getLoveLetterRoom(roomId: string): LoveLetterRoomRecord | null {
+  const room = rooms.get(roomId);
+  return room?.gameId === "love-letter" ? room : null;
+}
+
+function setRoomState(roomId: string, room: RoomRecord, state: RoomRecord["state"]): void {
+  rooms.set(roomId, {
+    ...room,
+    state,
+  });
+}
+
 function removePlayerFromRoom(roomId: string, playerId: string): void {
   clearPendingRemoval(roomId, playerId);
   activeSocketByPlayerKey.delete(getPlayerKey(roomId, playerId));
 
-  const game = rooms.get(roomId);
-  if (!game) return;
+  const room = getLoveLetterRoom(roomId);
+  if (!room) return;
+  const game = room.state;
 
   const next = game.players.some((player) => player.id === playerId)
     ? removePlayer(game, playerId)
@@ -64,7 +85,7 @@ function removePlayerFromRoom(roomId: string, playerId: string): void {
     return;
   }
 
-  rooms.set(roomId, next);
+  setRoomState(roomId, room, next);
   emitRoomState(roomId);
 }
 
@@ -112,8 +133,9 @@ function generateRoomCode(): string {
 }
 
 function emitRoomState(roomId: string): void {
-  const game = rooms.get(roomId);
-  if (!game) return;
+  const room = getLoveLetterRoom(roomId);
+  if (!room) return;
+  const game = room.state;
 
   for (const player of game.players) {
     io.to(getPlayerKey(roomId, player.id)).emit("state", toPlayerViewState(game, player.id));
@@ -123,7 +145,9 @@ function emitRoomState(roomId: string): void {
   }
 }
 
-function getParticipantName(game: ReturnType<typeof createGame>, playerId: string): string | null {
+function getParticipantName(room: RoomRecord, playerId: string): string | null {
+  const game = room.state;
+
   return (
     game.players.find((player) => player.id === playerId)?.name ??
     game.spectators.find((spectator) => spectator.id === playerId)?.name ??
@@ -153,7 +177,7 @@ io.on("connection", (socket) => {
     const normalizedMode = mode === "premium" ? "premium" : "classic";
     const game = createGame(roomId, normalizedPlayerId, normalizedMode);
     const next = addPlayer(game, normalizedPlayerId, name);
-    rooms.set(roomId, next);
+    rooms.set(roomId, { gameId: "love-letter", state: next });
     bindSocketToPlayer(socket.id, roomId, normalizedPlayerId);
     socket.join(roomId);
     socket.join(getPlayerKey(roomId, normalizedPlayerId));
@@ -165,8 +189,9 @@ io.on("connection", (socket) => {
   socket.on("room:join", ({ roomId, name, playerId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     const normalizedPlayerId = String(playerId ?? "").trim();
-    const game = rooms.get(normalizedRoomId);
-    if (!game || !normalizedPlayerId) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
+    if (!game || !room || !normalizedPlayerId) {
       socket.emit("action:error", { reason: !normalizedPlayerId ? "invalid_action" : "room_not_found" });
       respond?.({ ok: false, reason: !normalizedPlayerId ? "invalid_action" : "room_not_found" });
       return;
@@ -179,7 +204,7 @@ io.on("connection", (socket) => {
       : game.phase === "lobby"
         ? addPlayer(game, normalizedPlayerId, name)
         : addSpectator(game, normalizedPlayerId, name);
-    rooms.set(normalizedRoomId, next);
+    setRoomState(normalizedRoomId, room, next);
     bindSocketToPlayer(socket.id, normalizedRoomId, normalizedPlayerId);
     socket.join(normalizedRoomId);
     socket.join(getPlayerKey(normalizedRoomId, normalizedPlayerId));
@@ -191,7 +216,8 @@ io.on("connection", (socket) => {
   socket.on("room:reconnect", ({ roomId, playerId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     const normalizedPlayerId = String(playerId ?? "").trim();
-    const game = rooms.get(normalizedRoomId);
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
 
     if (!game) {
       socket.emit("action:error", { reason: "room_not_found" });
@@ -222,13 +248,13 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    if (!room) {
       respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
 
-    const playerName = getParticipantName(game, binding.playerId);
+    const playerName = getParticipantName(room, binding.playerId);
     if (!playerName) {
       respond?.({ ok: false, reason: "player_not_found" });
       return;
@@ -262,11 +288,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) return;
+    const room = getLoveLetterRoom(normalizedRoomId);
+    if (!room) return;
 
-    const next = setPlayerReady(game, binding.playerId, Boolean(isReady));
-    rooms.set(normalizedRoomId, next);
+    const next = setPlayerReady(room.state, binding.playerId, Boolean(isReady));
+    setRoomState(normalizedRoomId, room, next);
     emitRoomState(normalizedRoomId);
   });
 
@@ -278,8 +304,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) return;
+    const room = getLoveLetterRoom(normalizedRoomId);
+    if (!room) return;
+    const game = room.state;
 
     if (game.creatorId !== binding.playerId) {
       socket.emit("action:error", { reason: "only_creator_can_change_mode" });
@@ -293,7 +320,7 @@ io.on("connection", (socket) => {
 
     const normalizedMode = mode === "premium" ? "premium" : "classic";
     const next = setGameMode(game, binding.playerId, normalizedMode);
-    rooms.set(normalizedRoomId, next);
+    setRoomState(normalizedRoomId, room, next);
     emitRoomState(normalizedRoomId);
   });
 
@@ -324,8 +351,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
+    if (!game || !room) {
       socket.emit("action:error", { reason: "room_not_found" });
       return;
     }
@@ -341,7 +369,7 @@ io.on("connection", (socket) => {
     }
 
     const next = startRound(game);
-    rooms.set(normalizedRoomId, next);
+    setRoomState(normalizedRoomId, room, next);
     emitRoomState(normalizedRoomId);
   });
 
@@ -353,8 +381,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
+    if (!game || !room) {
       socket.emit("action:error", { reason: "room_not_found" });
       return;
     }
@@ -365,7 +394,7 @@ io.on("connection", (socket) => {
     }
 
     const next = resetMatchToLobby(game);
-    rooms.set(normalizedRoomId, next);
+    setRoomState(normalizedRoomId, room, next);
     emitRoomState(normalizedRoomId);
   });
 
@@ -377,8 +406,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
+    if (!game || !room) {
       respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
@@ -395,7 +425,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    rooms.set(normalizedRoomId, result.state);
+    setRoomState(normalizedRoomId, room, result.state);
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
 
@@ -412,8 +442,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
+    if (!game || !room) {
       respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
@@ -426,7 +457,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    rooms.set(normalizedRoomId, result.state);
+    setRoomState(normalizedRoomId, room, result.state);
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
 

@@ -14,9 +14,10 @@ import {
 } from "lucide-react";
 
 import { getCardDef } from "@game-site/shared";
-import type { GameEvent, LoveLetterMode, PlayerViewState, PrivateEffectPresentation } from "@game-site/shared";
+import type { CardID, GameEvent, LoveLetterMode, PlayerViewState, PrivateEffectPresentation } from "@game-site/shared";
 
 import { ActivityEventRow, ActivityFeed } from "../components/ActivityFeed.js";
+import { CardInfoPopup } from "../components/CardInfoPopup.js";
 import { CardView } from "../components/CardView.js";
 import { DiscardResolutionOverlay } from "../components/DiscardResolutionOverlay.js";
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
@@ -40,7 +41,7 @@ type RoomPageProps = {
   onAddBot: () => Promise<boolean>;
   onStartRound: () => void;
   onReturnToLobby: () => void;
-  onPlayCard: () => Promise<boolean>;
+  onPlayCard: (instanceIdOverride?: string) => Promise<boolean>;
   onDismissEffect: () => void;
   onCardinalPeek: (targetPlayerId: string) => Promise<boolean>;
   chatMessages: RoomChatMessage[];
@@ -81,6 +82,7 @@ export function RoomPage({
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
   const [copied, setCopied] = React.useState(false); // Copy button state
+  const [infoCardId, setInfoCardId] = React.useState<CardID | null>(null);
   const [announcementQueue, setAnnouncementQueue] = React.useState<LogAnnouncement[]>([]);
   const [activeAnnouncement, setActiveAnnouncement] = React.useState<LogAnnouncement | null>(null);
   const [announcementPhase, setAnnouncementPhase] = React.useState<"enter" | "exit">("enter");
@@ -213,6 +215,23 @@ export function RoomPage({
   );
   const isCardinalDecisionPending = Boolean(state.round?.pendingCardinalPeek);
 
+  function cardNeedsSetup(nextCardId: CardID): boolean {
+    return [
+      "guard",
+      "bishop",
+      "priest",
+      "baron",
+      "handmaid",
+      "sycophant",
+      "prince",
+      "king",
+      "dowager_queen",
+      "jester",
+      "baroness",
+      "cardinal",
+    ].includes(nextCardId);
+  }
+
   React.useEffect(() => {
     if (!isMyTurn || isCardinalDecisionPending) setPlayStage("select_card");
   }, [isCardinalDecisionPending, isMyTurn, state.round?.turnNumber, state.phase]);
@@ -294,10 +313,46 @@ export function RoomPage({
     }
   };
 
+  const handleBackToHand = () => {
+    onSelectCard(null);
+    onTargetPlayerIdsChange([]);
+    setPlayStage("select_card");
+  };
+
   const handleCopyCode = () => {
     navigator.clipboard.writeText(state.roomId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openCardInfo = React.useCallback((cardId: CardID) => {
+    setInfoCardId(cardId);
+  }, []);
+
+  const handleCardDiscardIntent = async (instanceId: string) => {
+    const handCard = self?.hand.find((card) => card.instanceId === instanceId);
+    if (!handCard || !isMyTurn || isCardinalDecisionPending) {
+      return;
+    }
+
+    onSelectCard(instanceId);
+    onTargetPlayerIdsChange([]);
+
+    if (handCard.cardId === "guard") {
+      onGuessedValueChange("2");
+    } else if (handCard.cardId === "bishop") {
+      onGuessedValueChange("0");
+    }
+
+    if (cardNeedsSetup(handCard.cardId)) {
+      setPlayStage("setup_action");
+      return;
+    }
+
+    const didPlay = await onPlayCard(instanceId);
+    if (didPlay) {
+      setPlayStage("select_card");
+    }
   };
 
   const jesterTargetedPlayerIds = React.useMemo(
@@ -691,7 +746,7 @@ export function RoomPage({
                         <div className="discard-fan">
                           {player.discardPile?.map((card, index) => (
                             <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
-                              <CardView card={card} mini />
+                              <CardView card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
                             </div>
                           ))}
                         </div>
@@ -761,20 +816,20 @@ export function RoomPage({
                     ) : (
                       <div className="hand-cards-large">
                         {self?.hand?.map((card) => (
-                        <div className="hand-card-wrapper" key={card.instanceId}>
-                          <CardView
-                            card={card}
-                            selectable={isMyTurn}
-                            selected={card.instanceId === selectedInstanceId}
-                            onClick={isMyTurn ? () => onSelectCard(card.instanceId) : undefined}
-                            spotlight={card.instanceId === selectedInstanceId}
-                          />
-                          {card.instanceId === selectedInstanceId && isMyTurn && (
-                            <button type="button" className="primary-button inline-play-btn" onClick={handleInitiatePlay}>
-                              Discard
-                            </button>
-                          )}
-                        </div>
+                          <div className="hand-card-wrapper" key={card.instanceId}>
+                            <CardView
+                              card={card}
+                              selectable
+                              selected={card.instanceId === selectedInstanceId}
+                              onClick={() => openCardInfo(card.cardId)}
+                              spotlight={card.instanceId === selectedInstanceId}
+                            />
+                            {isMyTurn ? (
+                              <button type="button" className="primary-button hand-card-discard-btn" onClick={() => void handleCardDiscardIntent(card.instanceId)}>
+                                Discard
+                              </button>
+                            ) : null}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -782,7 +837,7 @@ export function RoomPage({
                 ) : (
                   <div className="focus-action-area">
                     <div className="step-2-header">
-                      <button type="button" className="secondary-button button-content" onClick={() => setPlayStage("select_card")}>
+                      <button type="button" className="secondary-button button-content" onClick={handleBackToHand}>
                         <ArrowLeft size={16} strokeWidth={2.2} aria-hidden="true" />
                         Back to Hand
                       </button>
@@ -791,7 +846,7 @@ export function RoomPage({
                     
                     <div className="play-stage-horizontal">
                       <div className={`stage-card-slot ${!selectedCard ? "is-empty" : ""}`}>
-                        {selectedCard ? <CardView card={selectedCard} spotlight /> : <div className="empty-slot">Waiting for table update...</div>}
+                        {selectedCard ? <CardView card={selectedCard} spotlight selectable onClick={() => openCardInfo(selectedCard.cardId)} /> : <div className="empty-slot">Waiting for table update...</div>}
                       </div>
 
                       <div className="stage-actions">
@@ -898,7 +953,7 @@ export function RoomPage({
                         <div className="discard-fan">
                           {player.discardPile?.map((card, index) => (
                             <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
-                              <CardView card={card} mini />
+                              <CardView card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
                             </div>
                           ))}
                         </div>
@@ -913,7 +968,7 @@ export function RoomPage({
                     {(state.round?.visibleRemovedCards?.length ?? 0) > 0 ? (
                       <div className="discard-spread discard-spread-tight">
                         {state.round?.visibleRemovedCards?.map((card) => (
-                          <CardView key={card.instanceId} card={card} mini />
+                          <CardView key={card.instanceId} card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
                         ))}
                       </div>
                     ) : (
@@ -957,6 +1012,7 @@ export function RoomPage({
           onCardinalPeek={onCardinalPeek}
         />
       ) : null}
+      {infoCardId ? <CardInfoPopup cardId={infoCardId} mode={state.mode} onClose={() => setInfoCardId(null)} /> : null}
     </main>
   );
 }

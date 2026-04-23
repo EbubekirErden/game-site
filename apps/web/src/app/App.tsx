@@ -409,11 +409,11 @@ export function App() {
     });
   }
 
-  function handlePlayCard(): Promise<boolean> {
+  function handlePlayCard(instanceIdOverride?: string): Promise<boolean> {
     if (!state) return Promise.resolve(false);
 
     const self = state.players.find((player) => player.id === state.selfPlayerId);
-    const selectedCard = self?.hand.find((card) => card.instanceId === selectedInstanceId);
+    const selectedCard = self?.hand.find((card) => card.instanceId === (instanceIdOverride ?? selectedInstanceId));
     if (!selectedCard) return Promise.resolve(false);
 
     const selectedCardDef = getCardDef(selectedCard.cardId);

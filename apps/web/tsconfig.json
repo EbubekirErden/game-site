@@ -10,7 +10,8 @@
       "DOM"
     ],
     "types": [
-      "react"
+      "react",
+      "vite/client"
     ]
   },
   "include": [

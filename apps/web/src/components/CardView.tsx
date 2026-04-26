@@ -13,24 +13,26 @@ type CardViewProps = {
   spotlight?: boolean;
 };
 
+const cardImagePath = (fileName: string) => `${import.meta.env.BASE_URL}love-letter/cards/${fileName}`;
+
 const CARD_ART: Record<string, { accent: string; imagePath: string }> = {
-  assassin: { accent: "#4f5d75", imagePath: "/love-letter/cards/assassin.jpeg" },
-  jester: { accent: "#b08968", imagePath: "/love-letter/cards/jester.jpeg" },
-  guard: { accent: "#3d5a80", imagePath: "/love-letter/cards/guard.jpeg" },
-  cardinal: { accent: "#6a994e", imagePath: "/love-letter/cards/cardinal.jpeg" },
-  priest: { accent: "#5b7c4d", imagePath: "/love-letter/cards/priest.jpeg" },
-  baron: { accent: "#9c6644", imagePath: "/love-letter/cards/baron.jpeg" },
-  baroness: { accent: "#9d4edd", imagePath: "/love-letter/cards/baroness.png" },
-  handmaid: { accent: "#b56576", imagePath: "/love-letter/cards/handmaid.jpeg" },
-  sycophant: { accent: "#577590", imagePath: "/love-letter/cards/sycophant.jpeg" },
-  prince: { accent: "#d4a373", imagePath: "/love-letter/cards/prince.jpeg" },
-  count: { accent: "#bc6c25", imagePath: "/love-letter/cards/count.jpeg" },
-  constable: { accent: "#355070", imagePath: "/love-letter/cards/constable.jpeg" },
-  king: { accent: "#8d6a9f", imagePath: "/love-letter/cards/king.jpeg" },
-  countess: { accent: "#7f5539", imagePath: "/love-letter/cards/countess.jpeg" },
-  dowager_queen: { accent: "#8f5a9f", imagePath: "/love-letter/cards/dowager_queen.jpeg" },
-  princess: { accent: "#c1121f", imagePath: "/love-letter/cards/princess.jpeg" },
-  bishop: { accent: "#386641", imagePath: "/love-letter/cards/bishop.jpeg" },
+  assassin: { accent: "#4f5d75", imagePath: cardImagePath("assassin.jpeg") },
+  jester: { accent: "#b08968", imagePath: cardImagePath("jester.jpeg") },
+  guard: { accent: "#3d5a80", imagePath: cardImagePath("guard.jpeg") },
+  cardinal: { accent: "#6a994e", imagePath: cardImagePath("cardinal.jpeg") },
+  priest: { accent: "#5b7c4d", imagePath: cardImagePath("priest.jpeg") },
+  baron: { accent: "#9c6644", imagePath: cardImagePath("baron.jpeg") },
+  baroness: { accent: "#9d4edd", imagePath: cardImagePath("baroness.png") },
+  handmaid: { accent: "#b56576", imagePath: cardImagePath("handmaid.jpeg") },
+  sycophant: { accent: "#577590", imagePath: cardImagePath("sycophant.jpeg") },
+  prince: { accent: "#d4a373", imagePath: cardImagePath("prince.jpeg") },
+  count: { accent: "#bc6c25", imagePath: cardImagePath("count.jpeg") },
+  constable: { accent: "#355070", imagePath: cardImagePath("constable.jpeg") },
+  king: { accent: "#8d6a9f", imagePath: cardImagePath("king.jpeg") },
+  countess: { accent: "#7f5539", imagePath: cardImagePath("countess.jpeg") },
+  dowager_queen: { accent: "#8f5a9f", imagePath: cardImagePath("dowager_queen.jpeg") },
+  princess: { accent: "#c1121f", imagePath: cardImagePath("princess.jpeg") },
+  bishop: { accent: "#386641", imagePath: cardImagePath("bishop.jpeg") },
 };
 
 export function CardView({

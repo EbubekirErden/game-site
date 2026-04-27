@@ -1,9 +1,10 @@
 import React from "react";
 import { Anchor, Check, ChevronLeft, ChevronRight, Clock3, Copy, Crown, Flag, Hand, Info, RefreshCcw, Rocket } from "lucide-react";
 
-import type { SkullKingCardInstance, SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
+import type { SkullKingCard, SkullKingCardInstance, SkullKingCompletedTrick, SkullKingPlayerViewState, SkullKingTrickPlay, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
 
 import { RoomChat } from "../components/RoomChat.js";
+import { SkullKingCardInfoPopup } from "../components/SkullKingCardInfoPopup.js";
 import { SkullKingCardView } from "../components/SkullKingCardView.js";
 import { SkullKingInfoDrawer } from "../components/SkullKingInfoDrawer.js";
 import type { RoomChatMessage } from "../app/App.js";
@@ -32,15 +33,53 @@ function describeCard(card: SkullKingCardInstance["card"]): string {
   return card.type.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function cardSuitLabel(card: SkullKingCardInstance["card"]): string {
-  if (card.type !== "number") return card.type === "tigress" && card.mode === "pirate" ? "Pirate" : "Special";
-  return card.suit;
+function getLeadSuitFromPlays(plays: SkullKingTrickPlay[]): string | null {
+  const firstNumber = plays.find((play) => play.card.card.type === "number");
+  return firstNumber?.card.card.type === "number" ? firstNumber.card.card.suit : null;
 }
 
-function isWinningCard(state: SkullKingPlayerViewState, instanceId: string): boolean {
-  const winningIndex = state.round?.currentTrick.winningPlayIndex;
-  if (winningIndex === null || winningIndex === undefined || winningIndex < 0) return false;
-  return state.round?.currentTrick.plays[winningIndex]?.card.instanceId === instanceId;
+function describeWinningReason(trick: Pick<SkullKingCompletedTrick, "plays" | "winnerPlayerId" | "winningPlayIndex">): string {
+  if (trick.winnerPlayerId === null || trick.winningPlayIndex === null) {
+    return trick.plays.some((play) => play.card.card.type === "kraken")
+      ? "Kraken cancelled the trick, so nobody takes it."
+      : "No card took this trick.";
+  }
+
+  const winningCard = trick.plays[trick.winningPlayIndex]?.card.card;
+  if (!winningCard) return "This card is currently winning.";
+
+  if (trick.plays.some((play) => play.card.card.type === "white_whale")) {
+    const leadSuit = getLeadSuitFromPlays(trick.plays);
+    return leadSuit
+      ? `White Whale made the highest ${leadSuit} card win.`
+      : "White Whale won because no numbered suit was led.";
+  }
+
+  if (winningCard.type === "mermaid" && trick.plays.some((play) => play.card.card.type === "skull_king")) {
+    return "Mermaid wins because it beats Skull King.";
+  }
+
+  if (winningCard.type === "skull_king") {
+    return "Skull King beats Pirates and all numbered cards.";
+  }
+
+  if (winningCard.type === "pirate" || (winningCard.type === "tigress" && winningCard.mode === "pirate")) {
+    return "Pirate beats Mermaid and numbered cards.";
+  }
+
+  if (winningCard.type === "mermaid") {
+    return "Mermaid beats numbered cards when no Pirate or Skull King takes it.";
+  }
+
+  if (winningCard.type === "number" && winningCard.suit === "black") {
+    return "Black is trump, so the highest black card wins.";
+  }
+
+  if (winningCard.type === "number") {
+    return `Highest ${winningCard.suit} card wins because that suit was led.`;
+  }
+
+  return `${describeCard(winningCard)} is currently winning.`;
 }
 
 export function SkullKingRoomPage({
@@ -60,6 +99,8 @@ export function SkullKingRoomPage({
 }: SkullKingRoomPageProps) {
   const [selectedBid, setSelectedBid] = React.useState(1);
   const [selectedCardId, setSelectedCardId] = React.useState<string | null>(null);
+  const [infoCard, setInfoCard] = React.useState<SkullKingCard | null>(null);
+  const [lastResolvedTrick, setLastResolvedTrick] = React.useState<SkullKingCompletedTrick | null>(null);
   const [tigressMode, setTigressMode] = React.useState<TigressPlayMode>("escape");
   const [secondsLeft, setSecondsLeft] = React.useState(state.settings.turnDurationSeconds);
 
@@ -71,6 +112,22 @@ export function SkullKingRoomPage({
   const playing = state.phase === "playing";
   const showRoundTable = bidding || playing || state.phase === "round_over" || state.phase === "match_over";
   const roundNumber = state.round?.roundNumber ?? state.completedRoundCount;
+  const completedTricks = state.round?.completedTricks ?? [];
+  const latestCompletedTrick = completedTricks.at(-1) ?? (state.phase === "round_over" || state.phase === "match_over" ? lastResolvedTrick : null);
+  const currentTrickPlays = state.round?.currentTrick.plays ?? [];
+  const displayTrick = currentTrickPlays.length > 0
+    ? {
+        kind: "current" as const,
+        trickNumber: state.round?.currentTrick.trickNumber ?? 1,
+        plays: currentTrickPlays,
+        winnerPlayerId: state.round?.currentTrick.winningPlayIndex === null || state.round?.currentTrick.winningPlayIndex === undefined
+          ? null
+          : currentTrickPlays[state.round.currentTrick.winningPlayIndex]?.playerId ?? null,
+        winningPlayIndex: state.round?.currentTrick.winningPlayIndex ?? null,
+      }
+    : latestCompletedTrick
+      ? { kind: "resolved" as const, ...latestCompletedTrick }
+      : null;
   const autoActionSentRef = React.useRef<string | null>(null);
   const [copied, setCopied] = React.useState(false);
   const readyCount = state.players.filter((player) => player.isReady).length;
@@ -122,6 +179,23 @@ export function SkullKingRoomPage({
   React.useEffect(() => {
     autoActionSentRef.current = null;
   }, [state.round?.currentPlayerId, state.round?.turnStartedAt, state.phase]);
+
+  React.useEffect(() => {
+    const nextResolvedTrick = completedTricks.at(-1) ?? null;
+    if (nextResolvedTrick) {
+      setLastResolvedTrick(nextResolvedTrick);
+      return;
+    }
+
+    if (state.phase === "lobby" || state.phase === "bidding") {
+      setLastResolvedTrick(null);
+    }
+  }, [completedTricks, state.phase]);
+
+  const isDisplayedWinningCard = (instanceId: string) => {
+    if (!displayTrick || displayTrick.winningPlayIndex === null || displayTrick.winningPlayIndex === undefined) return false;
+    return displayTrick.plays[displayTrick.winningPlayIndex]?.card.instanceId === instanceId;
+  };
 
   return (
     <main className="table-layout skull-layout">
@@ -279,22 +353,29 @@ export function SkullKingRoomPage({
           <section className="skull-center-stack">
             <section className="game-panel skull-center-panel">
               <div className="panel-header-inline">
-                <h3>Current Trick</h3>
-                {state.round?.currentPlayerId ? <span className="mini-pill is-hot">Waiting on {state.players.find((player) => player.id === state.round?.currentPlayerId)?.name ?? "player"}</span> : null}
+                <h3>{displayTrick?.kind === "resolved" ? `Trick ${displayTrick.trickNumber} Result` : "Current Trick"}</h3>
+                {displayTrick?.kind === "resolved" ? (
+                  <span className="mini-pill is-hot">
+                    {displayTrick.winnerPlayerId ? `${state.players.find((player) => player.id === displayTrick.winnerPlayerId)?.name ?? "Winner"} took it` : "No winner"}
+                  </span>
+                ) : state.round?.currentPlayerId ? (
+                  <span className="mini-pill is-hot">Waiting on {state.players.find((player) => player.id === state.round?.currentPlayerId)?.name ?? "player"}</span>
+                ) : null}
               </div>
               <div className="skull-trick-table">
-                {state.round?.currentTrick.plays.length ? (
-                  state.round.currentTrick.plays.map((play) => (
-                    <article key={play.card.instanceId} className={`skull-trick-card ${isWinningCard(state, play.card.instanceId) ? "is-winning" : ""}`}>
-                      {isWinningCard(state, play.card.instanceId) ? (
+                {displayTrick?.plays.length ? (
+                  displayTrick.plays.map((play) => (
+                    <article key={play.card.instanceId} className={`skull-trick-card ${isDisplayedWinningCard(play.card.instanceId) ? "is-winning" : ""}`}>
+                      {isDisplayedWinningCard(play.card.instanceId) ? (
                         <div className="skull-winning-badge">
                           <Flag size={14} strokeWidth={2.2} aria-hidden="true" />
                         </div>
                       ) : null}
                       <SkullKingCardView card={play.card.card} compact />
+                      <button type="button" className="skull-card-info-button" aria-label={`Show ${describeCard(play.card.card)} details`} onClick={() => setInfoCard(play.card.card)}>
+                        <Info size={13} strokeWidth={2.3} aria-hidden="true" />
+                      </button>
                       <span className="skull-trick-player">{state.players.find((player) => player.id === play.playerId)?.name ?? play.playerId}</span>
-                      <strong>{describeCard(play.card.card)}</strong>
-                      <span>{cardSuitLabel(play.card.card)}</span>
                     </article>
                   ))
                 ) : (
@@ -304,6 +385,7 @@ export function SkullKingRoomPage({
                   </div>
                 )}
               </div>
+              {displayTrick ? <p className="skull-trick-reason">{describeWinningReason(displayTrick)}</p> : null}
             </section>
 
             <section className="game-panel skull-hand-panel">
@@ -344,15 +426,23 @@ export function SkullKingRoomPage({
 
               <div className="skull-hand-list">
                 {(self?.hand ?? []).map((card) => (
-                  <button
+                  <article
                     key={card.instanceId}
-                    type="button"
                     className={`skull-hand-card ${selectedCardId === card.instanceId ? "is-selected" : ""}`}
-                    onClick={() => setSelectedCardId((current) => (current === card.instanceId ? null : card.instanceId))}
-                    disabled={!playing || !isMyTurn}
                   >
-                    <SkullKingCardView card={card.card} compact />
-                  </button>
+                    <button
+                      type="button"
+                      className="skull-card-select-button"
+                      onClick={() => setSelectedCardId((current) => (current === card.instanceId ? null : card.instanceId))}
+                      disabled={!playing || !isMyTurn}
+                      aria-label={`Select ${describeCard(card.card)}`}
+                    >
+                      <SkullKingCardView card={card.card} compact />
+                    </button>
+                    <button type="button" className="skull-card-info-button" aria-label={`Show ${describeCard(card.card)} details`} onClick={() => setInfoCard(card.card)}>
+                      <Info size={13} strokeWidth={2.3} aria-hidden="true" />
+                    </button>
+                  </article>
                 ))}
               </div>
 
@@ -399,21 +489,22 @@ export function SkullKingRoomPage({
         </section>
 
         <aside className="table-sidebar table-right-sidebar skull-side-stack">
-          <section className="game-panel activity-panel skull-summary-panel">
-            <div className="panel-header-inline">
-              <h3>Last Tricks</h3>
-              <RefreshCcw size={15} strokeWidth={2.2} aria-hidden="true" />
-            </div>
-            <div className="skull-trick-history">
-              {(state.round?.completedTricks ?? []).slice(-4).reverse().map((trick) => (
-                <div key={trick.trickNumber} className="skull-history-row">
-                  <span>Trick {trick.trickNumber}</span>
-                  <strong>{trick.winnerPlayerId ? state.players.find((player) => player.id === trick.winnerPlayerId)?.name ?? trick.winnerPlayerId : "No winner"}</strong>
-                </div>
-              ))}
-              {!(state.round?.completedTricks.length) ? <p className="muted-text">No completed tricks yet.</p> : null}
-            </div>
-          </section>
+          {completedTricks.length > 0 ? (
+            <section className="game-panel activity-panel skull-summary-panel">
+              <div className="panel-header-inline">
+                <h3>Last Tricks</h3>
+                <RefreshCcw size={15} strokeWidth={2.2} aria-hidden="true" />
+              </div>
+              <div className="skull-trick-history">
+                {completedTricks.slice(-4).reverse().map((trick) => (
+                  <div key={trick.trickNumber} className="skull-history-row">
+                    <span>Trick {trick.trickNumber}</span>
+                    <strong>{trick.winnerPlayerId ? state.players.find((player) => player.id === trick.winnerPlayerId)?.name ?? trick.winnerPlayerId : "No winner"}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <RoomChat messages={chatMessages} state={state} onSendMessage={onSendChatMessage} />
         </aside>
@@ -428,6 +519,7 @@ export function SkullKingRoomPage({
         }
         buttonTitle="Open Skull King rules and card guide"
       />
+      {infoCard ? <SkullKingCardInfoPopup card={infoCard} onClose={() => setInfoCard(null)} /> : null}
     </main>
   );
 }

@@ -88,6 +88,18 @@ const SPECIAL_PRESENTATION: Record<
   },
 };
 
+export function getSkullKingCardSummary(card: SkullKingCard): string {
+  if (card.type === "number") {
+    return SUIT_PRESENTATION[card.suit].summary;
+  }
+
+  if (card.type === "tigress") {
+    return TIGRESS_PRESENTATION.summary;
+  }
+
+  return SPECIAL_PRESENTATION[card.type].summary;
+}
+
 export const TIGRESS_PRESENTATION = {
   label: "Tigress",
   artPath: "/skull-king/cards/tigress.png",

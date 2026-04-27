@@ -16,7 +16,7 @@
 }
 
 .skull-layout .table-workspace {
-  grid-template-columns: 210px minmax(0, 1fr) 390px;
+  grid-template-columns: 300px minmax(0, 1fr) 390px;
 }
 
 .skull-layout .center-lobby {
@@ -133,10 +133,17 @@
 
 .skull-lobby-actions {
   justify-items: stretch;
+  align-items: stretch;
   gap: 8px;
 }
 
 .skull-lobby-actions > button {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.skull-hand-panel > .primary-button {
   width: 100%;
 }
 
@@ -258,9 +265,10 @@
 .skull-trick-table {
   min-height: 240px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 168px));
   gap: 12px;
   align-content: start;
+  justify-content: center;
 }
 
 .skull-trick-card,
@@ -268,23 +276,30 @@
   position: relative;
   display: grid;
   gap: 8px;
-  padding: 12px;
+  padding: 0;
   border-radius: 8px;
-  border: 1px solid rgba(131, 146, 166, 0.22);
-  background: rgba(17, 24, 33, 0.72);
+  border: 1px solid transparent;
+  background: transparent;
   color: #edf3fb;
-  text-align: left;
+  text-align: center;
+  justify-items: center;
 }
 
 .skull-trick-card.is-winning {
-  border-color: rgba(255, 177, 66, 0.9);
-  box-shadow: 0 0 0 2px rgba(255, 177, 66, 0.2);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.skull-trick-card.is-winning .skull-card-view {
+  box-shadow:
+    0 0 0 2px rgba(255, 177, 66, 0.92),
+    0 12px 24px rgba(0, 0, 0, 0.28);
 }
 
 .skull-winning-badge {
   position: absolute;
-  top: -8px;
-  right: 10px;
+  top: 8px;
+  right: 8px;
   width: 28px;
   height: 28px;
   border-radius: 999px;
@@ -296,8 +311,18 @@
 }
 
 .skull-trick-player {
-  color: #b6c8dc;
-  font-size: 0.82rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(14, 22, 31, 0.82);
+  border: 1px solid rgba(131, 146, 166, 0.2);
+  color: #d4dfeb;
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skull-empty-trick {
@@ -338,13 +363,16 @@
 
 .skull-bid-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, 52px);
+  justify-content: center;
+  gap: 8px;
 }
 
 .skull-bid-option {
+  width: 52px;
   min-height: 52px;
-  border-radius: 14px;
+  padding: 0;
+  border-radius: 8px;
   border: 1px solid rgba(124, 143, 166, 0.22);
   background: rgba(17, 24, 33, 0.72);
   color: #dce6f2;
@@ -371,34 +399,75 @@
 }
 
 .skull-bid-row .primary-button {
-  margin-left: auto;
+  width: 100%;
 }
 
 .skull-hand-list {
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(128px, 148px));
+  justify-content: center;
   margin-bottom: 18px;
   padding-bottom: 6px;
 }
 
 .skull-hand-card {
   min-height: 0;
-  cursor: pointer;
   transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
   align-content: center;
   justify-items: center;
-  padding: 14px 14px 18px;
+  padding: 0;
 }
 
-.skull-hand-card:hover:not(:disabled),
+.skull-card-select-button {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.skull-card-select-button:disabled {
+  cursor: not-allowed;
+}
+
+.skull-hand-card:hover,
 .skull-hand-card.is-selected {
   transform: translateY(-2px);
-  border-color: rgba(84, 153, 255, 0.65);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  border-color: transparent;
+  box-shadow: none;
 }
 
-.skull-hand-card:disabled {
-  cursor: not-allowed;
+.skull-hand-card:hover .skull-card-view,
+.skull-hand-card.is-selected .skull-card-view {
+  box-shadow:
+    0 0 0 2px rgba(84, 153, 255, 0.68),
+    0 12px 24px rgba(0, 0, 0, 0.28);
+}
+
+.skull-hand-card:has(.skull-card-select-button:disabled) {
   opacity: 0.72;
+}
+
+.skull-card-info-button {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(141, 182, 245, 0.34);
+  border-radius: 8px;
+  background: rgba(15, 24, 34, 0.86);
+  color: #d9e8ff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.skull-card-info-button:hover {
+  border-color: rgba(141, 182, 245, 0.68);
+  background: rgba(31, 53, 87, 0.92);
 }
 
 .skull-card-view {
@@ -457,10 +526,19 @@
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
 }
 
-.skull-hand-card .skull-card-view,
-.skull-trick-card .skull-card-view,
+.skull-hand-card .skull-card-view {
+  width: min(100%, 136px);
+  max-width: 136px;
+}
+
+.skull-trick-card .skull-card-view {
+  width: min(100%, 140px);
+  max-width: 140px;
+}
+
 .info-card-visual .skull-card-view {
-  max-width: none;
+  width: min(100%, 120px);
+  max-width: 120px;
 }
 
 .info-card-visual {
@@ -571,10 +649,35 @@
   border-bottom: 1px solid rgba(131, 146, 166, 0.12);
 }
 
+.skull-trick-reason {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(14, 22, 31, 0.72);
+  border: 1px solid rgba(131, 146, 166, 0.18);
+  color: #c8d6e5;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 1260px) {
-  .skull-layout .table-workspace,
+  .skull-workspace {
+    grid-template-columns: minmax(320px, 340px) minmax(0, 1fr);
+  }
+
   .skull-grid {
-    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 320px) minmax(0, 1fr);
+  }
+
+  .skull-workspace > .table-left-sidebar {
+    grid-column: 1;
+  }
+
+  .skull-workspace > .table-center {
+    grid-column: 2;
+  }
+
+  .skull-workspace > .table-right-sidebar {
+    grid-column: 1 / -1;
   }
 
   .skull-center-stack,
@@ -596,6 +699,16 @@
 
   .skull-grid {
     grid-template-columns: 1fr;
+  }
+
+  .skull-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .skull-workspace > .table-left-sidebar,
+  .skull-workspace > .table-center,
+  .skull-workspace > .table-right-sidebar {
+    grid-column: 1;
   }
 
   .skull-timer-shell {
@@ -1468,6 +1581,25 @@ input::placeholder {
 .table-right-sidebar {
   align-self: start;
   max-height: calc(100vh - 132px);
+}
+
+.skull-workspace {
+  grid-template-columns: minmax(320px, 340px) minmax(0, 1fr) minmax(340px, 390px);
+}
+
+.skull-workspace > .table-left-sidebar {
+  grid-column: 1;
+  width: 100%;
+}
+
+.skull-workspace > .table-center {
+  grid-column: 2;
+  width: 100%;
+}
+
+.skull-workspace > .table-right-sidebar {
+  grid-column: 3;
+  width: 100%;
 }
 
 .game-panel {

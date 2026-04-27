@@ -66,20 +66,24 @@ function scoreCurrentRound(state: SkullKingGameState): SkullKingGameState {
   if (!state.round) return state;
 
   const bonusEvents = state.round.completedTricks.flatMap((trick) => trick.bonusEvents);
-  const scoredPlayers = applyRoundScores(state.players, state.round.roundNumber, bonusEvents).map((player) => ({
-    ...player,
-    bid: null,
-    tricksWon: 0,
-    hand: [],
-  }));
+  const scoredPlayers = applyRoundScores(state.players, state.round.roundNumber, bonusEvents);
   const highestScore = Math.max(...scoredPlayers.map((player) => player.totalScore));
   const isFinalRound = state.round.roundNumber >= getRoundMax(state);
+  const reviewRound = {
+    ...state.round,
+    currentPlayerId: null,
+    currentTrick: {
+      ...state.round.currentTrick,
+      plays: [],
+      winningPlayIndex: null,
+    },
+  };
 
   return {
     ...state,
     phase: isFinalRound ? "match_over" : "round_over",
     players: scoredPlayers,
-    round: null,
+    round: reviewRound,
     completedRoundCount: state.completedRoundCount + 1,
     matchWinnerIds: isFinalRound ? scoredPlayers.filter((player) => player.totalScore === highestScore).map((player) => player.id) : [],
     log: [

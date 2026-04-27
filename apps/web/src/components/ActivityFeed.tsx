@@ -23,6 +23,10 @@ type ActivityFeedProps = {
   emptyText?: string;
 };
 
+export function shouldShowActivityEvent(event: GameEvent): boolean {
+  return event.type !== "card_drawn";
+}
+
 const PLAYER_SWATCHES = [
   { background: "rgba(88, 166, 255, 0.16)", border: "rgba(88, 166, 255, 0.4)", text: "#8dc6ff" },
   { background: "rgba(255, 179, 71, 0.16)", border: "rgba(255, 179, 71, 0.4)", text: "#ffd08d" },
@@ -276,7 +280,7 @@ export function ActivityEventRow({ event, state, className = "" }: ActivityEvent
 }
 
 export function ActivityFeed({ events, state, emptyText = "No actions yet." }: ActivityFeedProps) {
-  const recentEvents = events.slice(-14).reverse();
+  const recentEvents = events.filter(shouldShowActivityEvent).slice(-12).reverse();
 
   return (
     <div className="activity-feed">

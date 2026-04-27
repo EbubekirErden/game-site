@@ -16,7 +16,7 @@ import {
 import { getCardDef } from "@game-site/shared";
 import type { CardID, GameEvent, LoveLetterMode, PlayerViewState, PrivateEffectPresentation } from "@game-site/shared";
 
-import { ActivityEventRow, ActivityFeed } from "../components/ActivityFeed.js";
+import { ActivityEventRow, ActivityFeed, shouldShowActivityEvent } from "../components/ActivityFeed.js";
 import { CardInfoPopup } from "../components/CardInfoPopup.js";
 import { CardView } from "../components/CardView.js";
 import { DiscardResolutionOverlay } from "../components/DiscardResolutionOverlay.js";
@@ -259,10 +259,13 @@ export function RoomPage({
       return;
     }
 
-    const appendedEvents = state.log.slice(processedCount).map((event, offset) => ({
-      key: `${processedCount + offset}-${event.type}`,
-      event,
-    }));
+    const appendedEvents = state.log
+      .slice(processedCount)
+      .map((event, offset) => ({
+        key: `${processedCount + offset}-${event.type}`,
+        event,
+      }))
+      .filter(({ event }) => shouldShowActivityEvent(event));
 
     processedLogCountRef.current = state.log.length;
     setAnnouncementQueue((current) => [...current, ...appendedEvents]);
@@ -387,12 +390,7 @@ export function RoomPage({
     targetNeeded &&
     !hasSelectableTarget,
   );
-  const visibleLogEvents = React.useMemo(() => {
-    const pendingAnnouncements = announcementQueue.length + (activeAnnouncement ? 1 : 0);
-    return pendingAnnouncements > 0
-      ? state.log.slice(0, Math.max(0, state.log.length - pendingAnnouncements))
-      : state.log;
-  }, [activeAnnouncement, announcementQueue.length, state.log]);
+  const visibleLogEvents = state.log;
   const mustPlayCountess = Boolean(
     selectedCardDef &&
     selectedCardDef.id !== "countess" &&

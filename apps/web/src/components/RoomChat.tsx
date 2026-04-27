@@ -2,11 +2,14 @@ import React from "react";
 import { Send } from "lucide-react";
 
 import type { PlayerID, PlayerViewState } from "@game-site/shared";
+import type { SkullKingPlayerViewState } from "@game-site/shared/games/skull-king/types";
 import type { RoomChatMessage } from "../app/App.js";
+
+type ChatState = Pick<PlayerViewState, "players" | "spectators" | "selfPlayerId"> | Pick<SkullKingPlayerViewState, "players" | "spectators" | "selfPlayerId">;
 
 type RoomChatProps = {
   messages: RoomChatMessage[];
-  state: PlayerViewState;
+  state: ChatState;
   onSendMessage: (text: string) => Promise<boolean>;
 };
 
@@ -19,7 +22,7 @@ const PLAYER_SWATCHES = [
   { background: "rgba(119, 221, 119, 0.16)", border: "rgba(119, 221, 119, 0.4)", text: "#bdf5bd" },
 ];
 
-function getPlayerSwatch(state: PlayerViewState, playerId: PlayerID) {
+function getPlayerSwatch(state: ChatState, playerId: PlayerID) {
   const playerIndex = state.players.findIndex((player) => player.id === playerId);
   if (playerIndex >= 0) return PLAYER_SWATCHES[playerIndex % PLAYER_SWATCHES.length];
 

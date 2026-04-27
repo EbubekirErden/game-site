@@ -3,8 +3,27 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { Server } from "socket.io";
 
-import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toBotObservation, toPlayerViewState } from "@game-site/shared/engine";
-import type { BotMemorySnapshot, BotObservedCardFact, CardInstance, PrivateEffectPresentation } from "@game-site/shared";
+import { isGameId } from "@game-site/shared";
+import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toBotObservation, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
+import type { BotMemorySnapshot, BotObservedCardFact, CardInstance, GameState as LoveLetterGameState, PrivateEffectPresentation } from "@game-site/shared/games/love-letter/types";
+import {
+  addPlayer as addSkullKingPlayer,
+  addSpectator as addSkullKingSpectator,
+  applyBidTimeout,
+  applyPlayTimeout,
+  canStartRound as canStartSkullKingRound,
+  createGame as createSkullKingGame,
+  playCard as playSkullKingCard,
+  removePlayer as removeSkullKingPlayer,
+  removeSpectator as removeSkullKingSpectator,
+  resetMatchToLobby as resetSkullKingMatchToLobby,
+  setPlayerReady as setSkullKingPlayerReady,
+  startRound as startSkullKingRound,
+  submitBid,
+  toPlayerViewState as toSkullKingPlayerViewState,
+  updateSettings as updateSkullKingSettings,
+} from "@game-site/shared/games/skull-king/engine";
+import type { SkullKingGameState } from "@game-site/shared/games/skull-king/types";
 import { chooseRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
 
 const httpServer = createServer();
@@ -12,9 +31,19 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
-type RoomGame = ReturnType<typeof createGame>;
+type LoveLetterRoomRecord = {
+  gameId: "love-letter";
+  state: LoveLetterGameState;
+};
 
-const rooms = new Map<string, RoomGame>();
+type SkullKingRoomRecord = {
+  gameId: "skull-king";
+  state: SkullKingGameState;
+};
+
+type RoomRecord = LoveLetterRoomRecord | SkullKingRoomRecord;
+
+const rooms = new Map<string, RoomRecord>();
 const roomChats = new Map<string, ChatMessage[]>();
 const playerBySocketId = new Map<string, { roomId: string; playerId: string }>();
 const activeSocketByPlayerKey = new Map<string, string>();
@@ -89,9 +118,9 @@ function isBotPlayer(roomId: string, playerId: string): boolean {
 }
 
 function destroyRoom(roomId: string): void {
-  const game = rooms.get(roomId);
-  if (game) {
-    for (const participant of [...game.players, ...game.spectators]) {
+  const room = rooms.get(roomId);
+  if (room) {
+    for (const participant of [...room.state.players, ...room.state.spectators]) {
       clearPendingRemoval(roomId, participant.id);
       activeSocketByPlayerKey.delete(getPlayerKey(roomId, participant.id));
       botMemoryByPlayerKey.delete(getPlayerKey(roomId, participant.id));
@@ -166,85 +195,36 @@ function extractObservedCardFacts(effect: PrivateEffectPresentation): BotObserve
   switch (effect.kind) {
     case "peek":
       return [
-        makeObservedCardFact(
-          effect,
-          effect.targetPlayerId,
-          effect.targetPlayerName,
-          effect.revealedCard,
-          "hand",
-          "peek",
-          `${effect.targetPlayerName}'s hand was revealed to the viewer.`,
-        ),
+        makeObservedCardFact(effect, effect.targetPlayerId, effect.targetPlayerName, effect.revealedCard, "hand", "peek", `${effect.targetPlayerName}'s hand was revealed to the viewer.`),
       ];
     case "multi_peek":
       return effect.seen.map((entry) =>
-        makeObservedCardFact(
-          effect,
-          entry.targetPlayerId,
-          entry.targetPlayerName,
-          entry.revealedCard,
-          "hand",
-          "multi_peek",
-          `${entry.targetPlayerName}'s hand was revealed to the viewer.`,
-        ),
+        makeObservedCardFact(effect, entry.targetPlayerId, entry.targetPlayerName, entry.revealedCard, "hand", "multi_peek", `${entry.targetPlayerName}'s hand was revealed to the viewer.`),
       );
     case "compare":
       return [
-        makeObservedCardFact(
-          effect,
-          effect.selfPlayerId,
-          effect.selfPlayerName,
-          effect.selfCard,
-          "hand",
-          "compare",
-          `${effect.selfPlayerName}'s compared hand was visible in a private comparison.`,
-        ),
-        makeObservedCardFact(
-          effect,
-          effect.opposingPlayerId,
-          effect.opposingPlayerName,
-          effect.opposingCard,
-          "hand",
-          "compare",
-          `${effect.opposingPlayerName}'s compared hand was visible in a private comparison.`,
-        ),
+        makeObservedCardFact(effect, effect.selfPlayerId, effect.selfPlayerName, effect.selfCard, "hand", "compare", `${effect.selfPlayerName}'s compared hand was visible in a private comparison.`),
+        makeObservedCardFact(effect, effect.opposingPlayerId, effect.opposingPlayerName, effect.opposingCard, "hand", "compare", `${effect.opposingPlayerName}'s compared hand was visible in a private comparison.`),
       ];
     case "cardinal_reveal":
       return [
-        makeObservedCardFact(
-          effect,
-          effect.chosenPlayerId,
-          effect.chosenPlayerName,
-          effect.revealedCard,
-          "hand",
-          "cardinal_reveal",
-          `${effect.chosenPlayerName}'s swapped hand was revealed after Cardinal.`,
-        ),
+        makeObservedCardFact(effect, effect.chosenPlayerId, effect.chosenPlayerName, effect.revealedCard, "hand", "cardinal_reveal", `${effect.chosenPlayerName}'s swapped hand was revealed after Cardinal.`),
       ];
     case "discard_reveal":
       return [
-        makeObservedCardFact(
-          effect,
-          effect.targetPlayerId,
-          effect.targetPlayerName,
-          effect.discardedCard,
-          "discard",
-          "discard_reveal",
-          `${effect.targetPlayerName} discarded this card due to a forced discard.`,
-        ),
+        makeObservedCardFact(effect, effect.targetPlayerId, effect.targetPlayerName, effect.discardedCard, "discard", "discard_reveal", `${effect.targetPlayerName}'s discarded card was revealed.`),
       ];
     case "guess":
-      return effect.revealedCards.map((card, index) =>
+      if (effect.revealedCards.length === 0) return [];
+      return effect.revealedCards.map((card) =>
         makeObservedCardFact(
           effect,
           effect.targetPlayerId,
           effect.targetPlayerName,
           card,
-          "discard",
+          effect.outcome === "correct" || effect.outcome === "assassin_rebound" ? "discard" : "hand",
           "guess",
-          index === 0
-            ? `${effect.targetPlayerName}'s card was revealed after a guess action.`
-            : `${effect.targetPlayerName} revealed an additional card after a guess action.`,
+          effect.outcome === "wrong" ? `${effect.targetPlayerName}'s card was checked by a guess action.` : `${effect.targetPlayerName} revealed an additional card after a guess action.`,
         ),
       );
     default:
@@ -252,156 +232,68 @@ function extractObservedCardFacts(effect: PrivateEffectPresentation): BotObserve
   }
 }
 
-function hasHumanParticipants(game: RoomGame): boolean {
-  return (
-    game.players.some((player) => !isBotPlayer(game.roomId, player.id)) ||
-    game.spectators.some((spectator) => !isBotPlayer(game.roomId, spectator.id))
-  );
-}
-
-function getPreferredCreatorId(game: RoomGame): string {
-  return (
-    game.players.find((player) => !isBotPlayer(game.roomId, player.id))?.id ??
-    game.spectators.find((spectator) => !isBotPlayer(game.roomId, spectator.id))?.id ??
-    game.creatorId
-  );
-}
-
-function normalizeCreator(game: RoomGame): RoomGame {
-  const preferredCreatorId = getPreferredCreatorId(game);
-  if (preferredCreatorId === game.creatorId) {
-    return game;
-  }
-
-  return {
-    ...game,
-    creatorId: preferredCreatorId,
-  };
-}
-
-function emitPrivateEffects(roomId: string, gameEffects: ReturnType<typeof playCardAction>["privateEffects"]): void {
-  for (const effect of gameEffects ?? []) {
+function emitPrivateEffects(roomId: string, effects: PrivateEffectPresentation[] = []): void {
+  for (const effect of effects) {
     if (isBotPlayer(roomId, effect.viewerPlayerId)) {
       appendBotMemory(roomId, effect.viewerPlayerId, effect);
+      continue;
     }
+
     io.to(getPlayerKey(roomId, effect.viewerPlayerId)).emit("action:effect", effect);
   }
 }
 
-function ensureBotsReady(roomId: string): void {
-  const game = rooms.get(roomId);
-  if (!game || (game.phase !== "lobby" && game.phase !== "round_over")) {
-    return;
-  }
-
-  let next = game;
-  let changed = false;
-  for (const player of game.players) {
-    if (isBotPlayer(roomId, player.id) && !player.isReady) {
-      next = setPlayerReady(next, player.id, true);
-      changed = true;
-    }
-  }
-
-  if (!changed) return;
-
-  rooms.set(roomId, normalizeCreator(next));
-  emitRoomState(roomId);
+function getLoveLetterRoom(roomId: string): LoveLetterRoomRecord | null {
+  const room = rooms.get(roomId);
+  return room?.gameId === "love-letter" ? room : null;
 }
 
-function runBotTurn(roomId: string): void {
-  pendingBotActionByRoomId.delete(roomId);
+function getSkullKingRoom(roomId: string): SkullKingRoomRecord | null {
+  const room = rooms.get(roomId);
+  return room?.gameId === "skull-king" ? room : null;
+}
 
-  const game = rooms.get(roomId);
-  if (!game || game.phase !== "in_round" || !game.round) return;
-
-  const cardinalActorId = game.round.pendingCardinalPeek?.actorPlayerId ?? null;
-  if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
-    const targetPlayerId = chooseRandomCardinalPeekTarget(toBotObservation(game, cardinalActorId, getBotMemory(roomId, cardinalActorId)));
-    if (!targetPlayerId) return;
-
-    const result = cardinalPeekAction(game, cardinalActorId, targetPlayerId);
-    if (!result.ok || !result.state) return;
-
-    rooms.set(roomId, normalizeCreator(result.state));
-    emitRoomState(roomId);
-    emitPrivateEffects(roomId, result.privateEffects);
-    return;
-  }
-
-  const currentPlayerId = game.round.currentPlayerId;
-  if (!currentPlayerId || !isBotPlayer(roomId, currentPlayerId)) return;
-
-  const decision = chooseRandomBotPlay(toBotObservation(game, currentPlayerId, getBotMemory(roomId, currentPlayerId)));
-  if (!decision) return;
-
-  const result = playCardAction(game, currentPlayerId, decision.instanceId, {
-    targetPlayerId: decision.targetPlayerId,
-    targetPlayerIds: decision.targetPlayerIds,
-    guessedValue: decision.guessedValue,
+function setRoomState(roomId: string, room: LoveLetterRoomRecord, state: LoveLetterGameState): void;
+function setRoomState(roomId: string, room: SkullKingRoomRecord, state: SkullKingGameState): void;
+function setRoomState(roomId: string, room: RoomRecord, state: LoveLetterGameState | SkullKingGameState): void {
+  rooms.set(roomId, {
+    ...room,
+    state: state as never,
   });
-
-  if (!result.ok || !result.state) return;
-
-  rooms.set(roomId, normalizeCreator(result.state));
-  emitRoomState(roomId);
-  emitPrivateEffects(roomId, result.privateEffects);
-}
-
-function scheduleBotAction(roomId: string): void {
-  clearPendingBotAction(roomId);
-
-  const game = rooms.get(roomId);
-  if (!game) return;
-
-  if (game.phase === "lobby" || game.phase === "round_over") {
-    ensureBotsReady(roomId);
-    return;
-  }
-
-  if (game.phase !== "in_round" || !game.round) return;
-
-  const actingBotId = game.round.pendingCardinalPeek?.actorPlayerId ?? game.round.currentPlayerId;
-  if (!actingBotId || !isBotPlayer(roomId, actingBotId)) {
-    return;
-  }
-
-  const timeout = setTimeout(() => {
-    runBotTurn(roomId);
-  }, BOT_ACTION_DELAY_MS);
-
-  pendingBotActionByRoomId.set(roomId, timeout);
 }
 
 function removePlayerFromRoom(roomId: string, playerId: string): void {
   clearPendingRemoval(roomId, playerId);
   activeSocketByPlayerKey.delete(getPlayerKey(roomId, playerId));
+  unregisterBotPlayer(roomId, playerId);
 
-  const game = rooms.get(roomId);
-  if (!game) {
-    unregisterBotPlayer(roomId, playerId);
-    return;
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  if (room.gameId === "love-letter") {
+    const next = room.state.players.some((player) => player.id === playerId)
+      ? removePlayer(room.state, playerId)
+      : removeSpectator(room.state, playerId);
+
+    if (next.players.length === 0 && next.spectators.length === 0) {
+      destroyRoom(roomId);
+      return;
+    }
+
+    setRoomState(roomId, room, next);
+  } else {
+    const next = room.state.players.some((player) => player.id === playerId)
+      ? removeSkullKingPlayer(room.state, playerId)
+      : removeSkullKingSpectator(room.state, playerId);
+
+    if (next.players.length === 0 && next.spectators.length === 0) {
+      destroyRoom(roomId);
+      return;
+    }
+
+    setRoomState(roomId, room, next);
   }
 
-  const next = game.players.some((player) => player.id === playerId)
-    ? removePlayer(game, playerId)
-    : removeSpectator(game, playerId);
-  if (isBotPlayer(roomId, playerId)) {
-    unregisterBotPlayer(roomId, playerId);
-  }
-
-  const normalizedNext = normalizeCreator(next);
-  if (normalizedNext.players.length === 0 && normalizedNext.spectators.length === 0) {
-    destroyRoom(roomId);
-    return;
-  }
-
-  if (!hasHumanParticipants(normalizedNext)) {
-    destroyRoom(roomId);
-    return;
-  }
-
-  rooms.set(roomId, normalizedNext);
   emitRoomState(roomId);
 }
 
@@ -449,20 +341,28 @@ function generateRoomCode(): string {
 }
 
 function emitRoomState(roomId: string): void {
-  const game = rooms.get(roomId);
-  if (!game) return;
+  const room = rooms.get(roomId);
+  if (!room) return;
 
-  for (const player of game.players) {
-    io.to(getPlayerKey(roomId, player.id)).emit("state", toPlayerViewState(game, player.id));
+  for (const player of room.state.players) {
+    io
+      .to(getPlayerKey(roomId, player.id))
+      .emit("state", room.gameId === "love-letter" ? toPlayerViewState(room.state, player.id) : toSkullKingPlayerViewState(room.state, player.id));
   }
-  for (const spectator of game.spectators) {
-    io.to(getPlayerKey(roomId, spectator.id)).emit("state", toPlayerViewState(game, spectator.id));
+  for (const spectator of room.state.spectators) {
+    io
+      .to(getPlayerKey(roomId, spectator.id))
+      .emit("state", room.gameId === "love-letter" ? toPlayerViewState(room.state, spectator.id) : toSkullKingPlayerViewState(room.state, spectator.id));
   }
 
-  scheduleBotAction(roomId);
+  if (room.gameId === "love-letter") {
+    scheduleBotAction(roomId);
+  }
 }
 
-function getParticipantName(game: RoomGame, playerId: string): string | null {
+function getParticipantName(room: RoomRecord, playerId: string): string | null {
+  const game = room.state;
+
   return (
     game.players.find((player) => player.id === playerId)?.name ??
     game.spectators.find((spectator) => spectator.id === playerId)?.name ??
@@ -474,23 +374,102 @@ function emitChatHistory(roomId: string, playerId: string): void {
   io.to(getPlayerKey(roomId, playerId)).emit("chat:history", roomChats.get(roomId) ?? []);
 }
 
-function addRandomBot(game: RoomGame): RoomGame {
-  const botPlayerId = `bot-${randomUUID()}`;
-  const botName = getBotDisplayName([
-    ...game.players.map((player) => player.name),
-    ...game.spectators.map((spectator) => spectator.name),
-  ]);
-  const withBot = addPlayer(game, botPlayerId, botName);
-  if (withBot === game) {
-    return game;
+function ensureBotsReady(roomId: string): void {
+  const room = getLoveLetterRoom(roomId);
+  if (!room) return;
+
+  let next = room.state;
+  for (const player of room.state.players) {
+    if (isBotPlayer(roomId, player.id) && !player.isReady) {
+      next = setPlayerReady(next, player.id, true);
+    }
   }
 
-  registerBotPlayer(game.roomId, botPlayerId);
-  return normalizeCreator(setPlayerReady(withBot, botPlayerId, true));
+  if (next !== room.state) {
+    setRoomState(roomId, room, next);
+  }
+}
+
+function runBotTurn(roomId: string): void {
+  pendingBotActionByRoomId.delete(roomId);
+
+  const room = getLoveLetterRoom(roomId);
+  if (!room || room.state.phase !== "in_round" || !room.state.round) return;
+
+  const cardinalActorId = room.state.round.pendingCardinalPeek?.actorPlayerId ?? null;
+  if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
+    const targetPlayerId = chooseRandomCardinalPeekTarget(toBotObservation(room.state, cardinalActorId, getBotMemory(roomId, cardinalActorId)));
+    if (!targetPlayerId) return;
+
+    const result = cardinalPeekAction(room.state, cardinalActorId, targetPlayerId);
+    if (!result.ok || !result.state) return;
+
+    setRoomState(roomId, room, result.state);
+    emitRoomState(roomId);
+    emitPrivateEffects(roomId, result.privateEffects);
+    return;
+  }
+
+  const currentPlayerId = room.state.round.currentPlayerId;
+  if (!currentPlayerId || !isBotPlayer(roomId, currentPlayerId)) return;
+
+  const decision = chooseRandomBotPlay(toBotObservation(room.state, currentPlayerId, getBotMemory(roomId, currentPlayerId)));
+  if (!decision) return;
+
+  const result = playCardAction(room.state, currentPlayerId, decision.instanceId, {
+    targetPlayerId: decision.targetPlayerId,
+    targetPlayerIds: decision.targetPlayerIds,
+    guessedValue: decision.guessedValue,
+  });
+  if (!result.ok || !result.state) return;
+
+  setRoomState(roomId, room, result.state);
+  emitRoomState(roomId);
+  emitPrivateEffects(roomId, result.privateEffects);
+}
+
+function scheduleBotAction(roomId: string): void {
+  clearPendingBotAction(roomId);
+
+  const room = getLoveLetterRoom(roomId);
+  if (!room) return;
+
+  if (room.state.phase === "lobby" || room.state.phase === "round_over") {
+    ensureBotsReady(roomId);
+    return;
+  }
+
+  if (room.state.phase !== "in_round" || !room.state.round) return;
+
+  const actingBotId = room.state.round.pendingCardinalPeek?.actorPlayerId ?? room.state.round.currentPlayerId;
+  if (!actingBotId || !isBotPlayer(roomId, actingBotId)) {
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    runBotTurn(roomId);
+  }, BOT_ACTION_DELAY_MS);
+
+  pendingBotActionByRoomId.set(roomId, timeout);
+}
+
+function addRandomBot(room: LoveLetterRoomRecord): LoveLetterGameState {
+  const botPlayerId = `bot-${randomUUID()}`;
+  const botName = getBotDisplayName([
+    ...room.state.players.map((player) => player.name),
+    ...room.state.spectators.map((spectator) => spectator.name),
+  ]);
+  const withBot = addPlayer(room.state, botPlayerId, botName);
+  if (withBot === room.state) {
+    return room.state;
+  }
+
+  registerBotPlayer(room.state.roomId, botPlayerId);
+  return setPlayerReady(withBot, botPlayerId, true);
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:create", ({ name, playerId, mode }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
+  socket.on("room:create", ({ name, playerId, mode, gameId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const roomId = generateRoomCode();
     const normalizedPlayerId = String(playerId ?? "").trim();
     if (!normalizedPlayerId) {
@@ -498,10 +477,21 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const normalizedMode = mode === "premium" ? "premium" : "classic";
-    const game = createGame(roomId, normalizedPlayerId, normalizedMode);
-    const next = addPlayer(game, normalizedPlayerId, name);
-    rooms.set(roomId, next);
+    const normalizedGameId = isGameId(gameId) ? gameId : "love-letter";
+    if (normalizedGameId === "love-letter") {
+      const normalizedMode = mode === "premium" ? "premium" : "classic";
+      const game = createGame(roomId, normalizedPlayerId, normalizedMode);
+      const next = addPlayer(game, normalizedPlayerId, name);
+      rooms.set(roomId, { gameId: "love-letter", state: next });
+    } else if (normalizedGameId === "skull-king") {
+      const game = createSkullKingGame(roomId, normalizedPlayerId);
+      const next = addSkullKingPlayer(game, normalizedPlayerId, name);
+      rooms.set(roomId, { gameId: "skull-king", state: next });
+    } else {
+      respond?.({ ok: false, reason: "game_not_available" });
+      return;
+    }
+
     bindSocketToPlayer(socket.id, roomId, normalizedPlayerId);
     socket.join(roomId);
     socket.join(getPlayerKey(roomId, normalizedPlayerId));
@@ -513,21 +503,37 @@ io.on("connection", (socket) => {
   socket.on("room:join", ({ roomId, name, playerId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     const normalizedPlayerId = String(playerId ?? "").trim();
-    const game = rooms.get(normalizedRoomId);
-    if (!game || !normalizedPlayerId) {
+    const room = rooms.get(normalizedRoomId);
+    if (!room || !normalizedPlayerId) {
       socket.emit("action:error", { reason: !normalizedPlayerId ? "invalid_action" : "room_not_found" });
       respond?.({ ok: false, reason: !normalizedPlayerId ? "invalid_action" : "room_not_found" });
       return;
     }
 
-    const existingPlayer = game.players.find((player) => player.id === normalizedPlayerId);
-    const existingSpectator = game.spectators.find((spectator) => spectator.id === normalizedPlayerId);
-    const next = existingPlayer || existingSpectator
-      ? game
-      : game.phase === "lobby"
-        ? addPlayer(game, normalizedPlayerId, name)
-        : addSpectator(game, normalizedPlayerId, name);
-    rooms.set(normalizedRoomId, next);
+    if (room.gameId === "love-letter") {
+      const game = room.state;
+      const existingPlayer = game.players.find((player) => player.id === normalizedPlayerId);
+      const existingSpectator = game.spectators.find((spectator) => spectator.id === normalizedPlayerId);
+      const next =
+        existingPlayer || existingSpectator
+          ? game
+          : game.phase === "lobby"
+            ? addPlayer(game, normalizedPlayerId, name)
+            : addSpectator(game, normalizedPlayerId, name);
+      setRoomState(normalizedRoomId, room, next);
+    } else {
+      const game = room.state;
+      const existingPlayer = game.players.find((player) => player.id === normalizedPlayerId);
+      const existingSpectator = game.spectators.find((spectator) => spectator.id === normalizedPlayerId);
+      const next =
+        existingPlayer || existingSpectator
+          ? game
+          : game.phase === "lobby"
+            ? addSkullKingPlayer(game, normalizedPlayerId, name)
+            : addSkullKingSpectator(game, normalizedPlayerId, name);
+      setRoomState(normalizedRoomId, room, next);
+    }
+
     bindSocketToPlayer(socket.id, normalizedRoomId, normalizedPlayerId);
     socket.join(normalizedRoomId);
     socket.join(getPlayerKey(normalizedRoomId, normalizedPlayerId));
@@ -539,7 +545,8 @@ io.on("connection", (socket) => {
   socket.on("room:reconnect", ({ roomId, playerId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     const normalizedPlayerId = String(playerId ?? "").trim();
-    const game = rooms.get(normalizedRoomId);
+    const room = rooms.get(normalizedRoomId);
+    const game = room?.state;
 
     if (!game) {
       socket.emit("action:error", { reason: "room_not_found" });
@@ -570,13 +577,13 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = rooms.get(normalizedRoomId);
+    if (!room) {
       respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
 
-    const playerName = getParticipantName(game, binding.playerId);
+    const playerName = getParticipantName(room, binding.playerId);
     if (!playerName) {
       respond?.({ ok: false, reason: "player_not_found" });
       return;
@@ -610,11 +617,16 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) return;
+    const room = rooms.get(normalizedRoomId);
+    if (!room) return;
 
-    const next = setPlayerReady(game, binding.playerId, Boolean(isReady));
-    rooms.set(normalizedRoomId, next);
+    if (room.gameId === "love-letter") {
+      const next = setPlayerReady(room.state, binding.playerId, Boolean(isReady));
+      setRoomState(normalizedRoomId, room, next);
+    } else {
+      const next = setSkullKingPlayerReady(room.state, binding.playerId, Boolean(isReady));
+      setRoomState(normalizedRoomId, room, next);
+    }
     emitRoomState(normalizedRoomId);
   });
 
@@ -626,8 +638,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) return;
+    const room = getLoveLetterRoom(normalizedRoomId);
+    if (!room) return;
+    const game = room.state;
 
     if (game.creatorId !== binding.playerId) {
       socket.emit("action:error", { reason: "only_creator_can_change_mode" });
@@ -641,7 +654,7 @@ io.on("connection", (socket) => {
 
     const normalizedMode = mode === "premium" ? "premium" : "classic";
     const next = setGameMode(game, binding.playerId, normalizedMode);
-    rooms.set(normalizedRoomId, next);
+    setRoomState(normalizedRoomId, room, next);
     emitRoomState(normalizedRoomId);
   });
 
@@ -653,24 +666,23 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    if (!room) {
       respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
 
-    if (game.creatorId !== binding.playerId) {
+    if (room.state.creatorId !== binding.playerId) {
       respond?.({ ok: false, reason: "only_creator_can_manage_bots" });
       return;
     }
 
-    if (game.phase !== "lobby") {
+    if (room.state.phase !== "lobby") {
       respond?.({ ok: false, reason: "cannot_add_bot_now" });
       return;
     }
 
-    const next = addRandomBot(game);
-    rooms.set(normalizedRoomId, next);
+    setRoomState(normalizedRoomId, room, addRandomBot(room));
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
   });
@@ -702,27 +714,37 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = rooms.get(normalizedRoomId);
+    if (!room) {
       socket.emit("action:error", { reason: "room_not_found" });
       return;
     }
 
-    if (game.creatorId !== binding.playerId) {
+    if (room.state.creatorId !== binding.playerId) {
       socket.emit("action:error", { reason: "only_creator_can_start" });
       return;
     }
 
-    if ((game.phase === "lobby" || game.phase === "round_over") && !canStartReadyRound(game)) {
-      socket.emit("action:error", { reason: "players_not_ready" });
-      return;
+    if (room.gameId === "love-letter") {
+      const game = room.state;
+      if ((game.phase === "lobby" || game.phase === "round_over") && !canStartReadyRound(game)) {
+        socket.emit("action:error", { reason: "players_not_ready" });
+        return;
+      }
+
+      const next = startRound(game);
+      setRoomState(normalizedRoomId, room, next);
+      resetRoomBotMemories(normalizedRoomId);
+    } else {
+      const game = room.state;
+      if ((game.phase === "lobby" || game.phase === "round_over") && !canStartSkullKingRound(game)) {
+        socket.emit("action:error", { reason: "players_not_ready" });
+        return;
+      }
+
+      setRoomState(normalizedRoomId, room, startSkullKingRound(game));
     }
 
-    const next = startRound(game);
-    if (next !== game && next.phase === "in_round") {
-      resetRoomBotMemories(normalizedRoomId);
-    }
-    rooms.set(normalizedRoomId, next);
     emitRoomState(normalizedRoomId);
   });
 
@@ -734,19 +756,22 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = rooms.get(normalizedRoomId);
+    if (!room) {
       socket.emit("action:error", { reason: "room_not_found" });
       return;
     }
 
-    if (game.creatorId !== binding.playerId) {
+    if (room.state.creatorId !== binding.playerId) {
       socket.emit("action:error", { reason: "only_creator_can_start" });
       return;
     }
 
-    const next = resetMatchToLobby(game);
-    rooms.set(normalizedRoomId, next);
+    if (room.gameId === "love-letter") {
+      setRoomState(normalizedRoomId, room, resetMatchToLobby(room.state));
+    } else {
+      setRoomState(normalizedRoomId, room, resetSkullKingMatchToLobby(room.state));
+    }
     emitRoomState(normalizedRoomId);
   });
 
@@ -758,8 +783,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
+    if (!game || !room) {
       respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
@@ -776,9 +802,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    rooms.set(normalizedRoomId, result.state);
+    setRoomState(normalizedRoomId, room, result.state);
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
+
     emitPrivateEffects(normalizedRoomId, result.privateEffects);
   });
 
@@ -790,8 +817,9 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const game = rooms.get(normalizedRoomId);
-    if (!game) {
+    const room = getLoveLetterRoom(normalizedRoomId);
+    const game = room?.state;
+    if (!game || !room) {
       respond?.({ ok: false, reason: "room_not_found" });
       return;
     }
@@ -804,10 +832,131 @@ io.on("connection", (socket) => {
       return;
     }
 
-    rooms.set(normalizedRoomId, result.state);
+    setRoomState(normalizedRoomId, room, result.state);
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
+
     emitPrivateEffects(normalizedRoomId, result.privateEffects);
+  });
+
+  socket.on("skull:update-settings", ({ roomId, settings }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getSkullKingRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const next = updateSkullKingSettings(room.state, binding.playerId, settings ?? {});
+    setRoomState(normalizedRoomId, room, next);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("skull:bid", ({ roomId, bid }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getSkullKingRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const result = submitBid(room.state, binding.playerId, Number(bid ?? 1));
+    if (!result.ok || !result.state) {
+      respond?.({ ok: false, reason: result.reason ?? "invalid_action" });
+      return;
+    }
+
+    setRoomState(normalizedRoomId, room, result.state);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("skull:play-card", ({ roomId, instanceId, tigressMode }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getSkullKingRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const result = playSkullKingCard(room.state, binding.playerId, String(instanceId ?? ""), { tigressMode });
+    if (!result.ok || !result.state) {
+      respond?.({ ok: false, reason: result.reason ?? "invalid_action" });
+      return;
+    }
+
+    setRoomState(normalizedRoomId, room, result.state);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("skull:timeout-bid", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getSkullKingRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const result = applyBidTimeout(room.state, binding.playerId);
+    if (!result.ok || !result.state) {
+      respond?.({ ok: false, reason: result.reason ?? "invalid_action" });
+      return;
+    }
+
+    setRoomState(normalizedRoomId, room, result.state);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("skull:timeout-play", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getSkullKingRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const result = applyPlayTimeout(room.state, binding.playerId);
+    if (!result.ok || !result.state) {
+      respond?.({ ok: false, reason: result.reason ?? "invalid_action" });
+      return;
+    }
+
+    setRoomState(normalizedRoomId, room, result.state);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
   });
 
   socket.on("disconnect", () => {

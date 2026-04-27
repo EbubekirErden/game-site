@@ -43,6 +43,8 @@ export function formatErrorReason(reason: string): string {
       return "Bots can only be added while the room is still in the lobby.";
     case "game_already_started":
       return "That room already started, so new players cannot join right now.";
+    case "game_not_available":
+      return "That game is not available yet.";
     case "player_not_found":
       return "Your saved spot in that room could not be restored.";
     case "not_your_turn":

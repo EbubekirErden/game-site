@@ -39,6 +39,7 @@ type RoomPageProps = {
   onToggleReady: (isReady: boolean) => void;
   onSetMode: (mode: LoveLetterMode) => void;
   onAddBot: () => Promise<boolean>;
+  onAddSmartBot: () => Promise<boolean>;
   onStartRound: () => void;
   onReturnToLobby: () => void;
   onPlayCard: (instanceIdOverride?: string) => Promise<boolean>;
@@ -71,6 +72,7 @@ export function RoomPage({
   onToggleReady,
   onSetMode,
   onAddBot,
+  onAddSmartBot,
   onStartRound,
   onReturnToLobby,
   onPlayCard,
@@ -614,6 +616,9 @@ export function RoomPage({
               </p>
               <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
                 Add Random Bot
+              </button>
+              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddSmartBot()}>
+                Add Smart Bot
               </button>
             </section>
           )}

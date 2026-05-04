@@ -1,5 +1,5 @@
 {
-  "name": "game-site",
+  "name": "deck-harbor",
   "private": true,
   "workspaces": [
     "apps/*",

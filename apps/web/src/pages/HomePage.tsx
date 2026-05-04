@@ -43,7 +43,7 @@ export function HomePage({
       {/* Sidebar for Game Selection */}
       <aside className="hub-sidebar">
         <div className="hub-sidebar-header">
-          <h1>Game Hub</h1>
+          <h1>Deck Harbor</h1>
         </div>
         <nav className="game-list">
           {games.map((game) => (

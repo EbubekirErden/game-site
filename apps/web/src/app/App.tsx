@@ -13,7 +13,7 @@ import { RoomPage } from "../pages/RoomPage.js";
 import { SkullKingRoomPage } from "../pages/SkullKingRoomPage.js";
 import "../styles.css";
 
-const SESSION_STORAGE_KEY = "game-site:session";
+const SESSION_STORAGE_KEY = "deck-harbor:session";
 
 type PersistedSession = {
   playerId: string;

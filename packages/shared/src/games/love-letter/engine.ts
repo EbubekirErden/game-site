@@ -272,6 +272,7 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
   if (state.phase !== "lobby") return state;
   if (state.players.some((player) => player.id === id)) return state;
   if (state.spectators.some((spectator) => spectator.id === id)) return state;
+  const creatorWasPreviouslyAPlayer = state.log.some((event) => event.type === "player_joined" && event.playerId === state.creatorId);
 
   const player: PlayerState = {
     id,
@@ -286,7 +287,10 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
 
   return {
     ...state,
-    creatorId: state.players.some((player) => player.id === state.creatorId) ? state.creatorId : id,
+    creatorId:
+      state.players.length === 0
+        ? (state.spectators.some((spectator) => spectator.id === state.creatorId) && creatorWasPreviouslyAPlayer ? state.creatorId : id)
+        : state.creatorId,
     players: [...state.players, player],
     log: [...state.log, { type: "player_joined", playerId: id, name }],
   };
@@ -306,12 +310,28 @@ export function addSpectator(state: GameState, id: string, name: string): GameSt
 export function removeSpectator(state: GameState, spectatorId: PlayerID): GameState {
   const leavingSpectator = state.spectators.find((spectator) => spectator.id === spectatorId);
   if (!leavingSpectator) return state;
+  const remainingSpectators = state.spectators.filter((spectator) => spectator.id !== spectatorId);
+  const nextCreatorId =
+    state.creatorId === spectatorId
+      ? state.players[0]?.id ?? remainingSpectators[0]?.id ?? state.creatorId
+      : state.creatorId;
 
   return {
     ...state,
-    spectators: state.spectators.filter((spectator) => spectator.id !== spectatorId),
+    creatorId: nextCreatorId,
+    spectators: remainingSpectators,
     log: [...state.log, { type: "spectator_left", spectatorId: leavingSpectator.id, name: leavingSpectator.name }],
   };
+}
+
+export function moveSpectatorToPlayers(state: GameState, spectatorId: PlayerID): GameState {
+  if (state.phase !== "lobby") return state;
+
+  const spectator = state.spectators.find((candidate) => candidate.id === spectatorId);
+  if (!spectator) return state;
+
+  const withoutSpectator = removeSpectator(state, spectatorId);
+  return addPlayer(withoutSpectator, spectator.id, spectator.name);
 }
 
 export function setPlayerReady(state: GameState, playerId: PlayerID, isReady: boolean): GameState {
@@ -433,7 +453,13 @@ export function movePlayerToSpectators(state: GameState, playerId: PlayerID): Ga
   if (!player) return state;
 
   const withoutPlayer = removePlayer(state, playerId);
-  return addSpectator(withoutPlayer, player.id, player.name);
+  const next = addSpectator(withoutPlayer, player.id, player.name);
+  return state.creatorId === playerId
+    ? {
+        ...next,
+        creatorId: player.id,
+      }
+    : next;
 }
 
 export function resetMatchToLobby(state: GameState): GameState {
@@ -442,7 +468,7 @@ export function resetMatchToLobby(state: GameState): GameState {
   return {
     ...state,
     phase: "lobby",
-    creatorId: state.players.some((player) => player.id === state.creatorId)
+    creatorId: state.players.some((player) => player.id === state.creatorId) || state.spectators.some((spectator) => spectator.id === state.creatorId)
       ? state.creatorId
       : state.players[0]?.id ?? state.creatorId,
     players: state.players.map((player) => ({

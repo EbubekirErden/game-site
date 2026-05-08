@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { Server } from "socket.io";
 
 import { isGameId } from "@game-site/shared";
-import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toBotObservation, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
+import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, movePlayerToSpectators, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toBotObservation, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
 import type { BotMemorySnapshot, BotObservedCardFact, CardInstance, GameState as LoveLetterGameState, PrivateEffectPresentation } from "@game-site/shared/games/love-letter/types";
 import {
   addPlayer as addSkullKingPlayer,
@@ -537,7 +537,7 @@ io.on("connection", (socket) => {
     respond?.({ ok: true, roomId });
   });
 
-  socket.on("room:join", ({ roomId, name, playerId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
+  socket.on("room:join", ({ roomId, name, playerId, asSpectator }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     const normalizedPlayerId = String(playerId ?? "").trim();
     const room = rooms.get(normalizedRoomId);
@@ -554,7 +554,9 @@ io.on("connection", (socket) => {
       const next =
         existingPlayer || existingSpectator
           ? game
-          : game.phase === "lobby"
+          : asSpectator
+            ? addSpectator(game, normalizedPlayerId, name)
+            : game.phase === "lobby"
             ? addPlayer(game, normalizedPlayerId, name)
             : addSpectator(game, normalizedPlayerId, name);
       setRoomState(normalizedRoomId, room, next);
@@ -565,7 +567,9 @@ io.on("connection", (socket) => {
       const next =
         existingPlayer || existingSpectator
           ? game
-          : game.phase === "lobby"
+          : asSpectator
+            ? addSkullKingSpectator(game, normalizedPlayerId, name)
+            : game.phase === "lobby"
             ? addSkullKingPlayer(game, normalizedPlayerId, name)
             : addSkullKingSpectator(game, normalizedPlayerId, name);
       setRoomState(normalizedRoomId, room, next);
@@ -577,6 +581,36 @@ io.on("connection", (socket) => {
     emitRoomState(normalizedRoomId);
     emitChatHistory(normalizedRoomId, normalizedPlayerId);
     respond?.({ ok: true, roomId: normalizedRoomId });
+  });
+
+  socket.on("room:become-spectator", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = rooms.get(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    if (room.gameId !== "love-letter") {
+      respond?.({ ok: false, reason: "cannot_spectate_now" });
+      return;
+    }
+
+    if (!room.state.players.some((player) => player.id === binding.playerId)) {
+      respond?.({ ok: false, reason: "player_not_found" });
+      return;
+    }
+
+    const next = movePlayerToSpectators(room.state, binding.playerId);
+    setRoomState(normalizedRoomId, room, next);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
   });
 
   socket.on("room:reconnect", ({ roomId, playerId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {

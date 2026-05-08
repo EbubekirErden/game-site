@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addPlayer, addSpectator, createGame, playCardAction, removePlayer, resetMatchToLobby, setPlayerReady, startRound, toPlayerViewState } from "./engine.js";
+import { addPlayer, addSpectator, createGame, movePlayerToSpectators, playCardAction, removePlayer, resetMatchToLobby, setPlayerReady, startRound, toPlayerViewState } from "./engine.js";
 import type { CardInstance, GameState, LoveLetterMode, PlayerID } from "./types.js";
 
 function makeCard(cardId: CardInstance["cardId"], instanceId: string): CardInstance {
@@ -197,7 +197,7 @@ test("late arrivals can spectate without seeing private hands or affecting readi
   assert.equal(setPlayerReady(state, "p3", true), state);
 });
 
-test("returning a finished match to lobby promotes spectators for the next game", () => {
+test("returning a finished match to lobby keeps spectators as spectators", () => {
   let state = setupStartedGame(["Ava", "Ben"]);
   state = addSpectator(state, "p3", "Cara");
   state = {
@@ -213,10 +213,35 @@ test("returning a finished match to lobby promotes spectators for the next game"
   const lobby = resetMatchToLobby(state);
 
   assert.equal(lobby.phase, "lobby");
-  assert.deepEqual(lobby.players.map((player) => player.id), ["p1", "p2", "p3"]);
-  assert.equal(lobby.spectators.length, 0);
+  assert.deepEqual(lobby.players.map((player) => player.id), ["p1", "p2"]);
+  assert.deepEqual(lobby.spectators.map((spectator) => spectator.id), ["p3"]);
   assert.equal(lobby.players.every((player) => player.tokens === 0 && !player.isReady && player.hand.length === 0), true);
-  assert.equal(toPlayerViewState(lobby, "p3").selfRole, "player");
+  assert.equal(toPlayerViewState(lobby, "p3").selfRole, "spectator");
+});
+
+test("moving a player to spectator removes them from ready checks and preserves spectator view", () => {
+  let state = createGame("ROOM", "p1", "classic");
+  state = addPlayer(state, "p1", "Alice");
+  state = addPlayer(state, "p2", "Bob");
+  state = setPlayerReady(state, "p1", true);
+  state = setPlayerReady(state, "p2", true);
+
+  state = movePlayerToSpectators(state, "p2");
+
+  assert.equal(state.players.length, 1);
+  assert.equal(state.spectators.length, 1);
+  assert.equal(state.players[0]?.id, "p1");
+  assert.equal(state.spectators[0]?.id, "p2");
+  assert.equal(state.players[0]?.isReady, false);
+  assert.equal(toPlayerViewState(state, "p2").selfRole, "spectator");
+});
+
+test("first player to join a lobby with only spectators becomes creator", () => {
+  let state = createGame("ROOM", "host", "classic");
+  state = addSpectator(state, "host", "Host");
+  state = addPlayer(state, "p1", "Alice");
+
+  assert.equal(state.creatorId, "p1");
 });
 
 test("disconnecting the last opponent awards the round and returns the room to lobby", () => {

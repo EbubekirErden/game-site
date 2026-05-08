@@ -14,13 +14,14 @@ type HomePageProps = {
   selectedGame: GameID | null;
   playerName: string;
   joinCode: string;
-  pendingAction: "create" | "join" | null;
+  pendingAction: "create" | "join" | "watch" | null;
   message: string;
   onSelectGame: (gameId: GameID) => void;
   onPlayerNameChange: (value: string) => void;
   onJoinCodeChange: (value: string) => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
+  onWatchRoom: () => void;
 };
 
 export function HomePage({
@@ -35,6 +36,7 @@ export function HomePage({
   onJoinCodeChange,
   onCreateRoom,
   onJoinRoom,
+  onWatchRoom,
 }: HomePageProps) {
   const activeGame = games.find((g) => g.id === selectedGame);
 
@@ -121,6 +123,9 @@ export function HomePage({
                 </label>
                 <button type="button" className="secondary-button action-button" onClick={onJoinRoom} disabled={pendingAction !== null || !playerName || !joinCode}>
                   {pendingAction === "join" ? "Joining..." : "Join Room"}
+                </button>
+                <button type="button" className="secondary-button action-button mt-2" onClick={onWatchRoom} disabled={pendingAction !== null || !playerName || !joinCode}>
+                  {pendingAction === "watch" ? "Watching..." : "Watch as Spectator"}
                 </button>
               </div>
             </div>

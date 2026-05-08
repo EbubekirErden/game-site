@@ -48,6 +48,7 @@ type RoomPageProps = {
   onCardinalPeek: (targetPlayerId: string) => Promise<boolean>;
   chatMessages: RoomChatMessage[];
   onSendChatMessage: (text: string) => Promise<boolean>;
+  onBecomeSpectator: () => Promise<boolean>;
   onLeaveRoom: () => void;
 };
 
@@ -82,6 +83,7 @@ export function RoomPage({
   onCardinalPeek,
   chatMessages,
   onSendChatMessage,
+  onBecomeSpectator,
   onLeaveRoom,
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
@@ -486,6 +488,11 @@ export function RoomPage({
               {isMyTurn ? "Your Turn" : currentTurnName ? `${currentTurnName}'s Turn` : "Turn in progress"}
             </span>
           )}
+          {!selfSpectator ? (
+            <button type="button" className="secondary-button topbar-leave-button" onClick={() => void onBecomeSpectator()}>
+              Spectate
+            </button>
+          ) : null}
           <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
         </div>
       </header>
@@ -584,8 +591,8 @@ export function RoomPage({
                 {isCreator
                   ? "Choose the deck for this room before starting the round."
                   : selfSpectator
-                    ? "You can watch this match and will join the next lobby as a player."
-                  : `${playerNameById(state, state.creatorId)} can change the mode before the round starts.`}
+                    ? "You are watching only. Spectators stay out of ready checks and turn order."
+                    : `${playerNameById(state, state.creatorId)} can change the mode before the round starts.`}
               </p>
               <div className="mode-picker-options">
                 <button
@@ -655,7 +662,7 @@ export function RoomPage({
               <p>
                 Need at least 2 players. Every player must be ready to start.
                 {state.mode === "premium" ? " Premium is intended for 5 to 8 people." : ""}
-                {state.spectators.length > 0 ? " Spectators will become players after a finished match returns here." : ""}
+                {state.spectators.length > 0 ? " Spectators can watch without being counted as players." : ""}
               </p>
               <div className="lobby-stats">
                 <div className="stat-box"><strong>{playerCount}</strong> <span>Players</span></div>
@@ -697,7 +704,7 @@ export function RoomPage({
 
                 <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "32px", justifyContent: "center", flexWrap: "wrap" }}>
                   {selfSpectator ? (
-                    <p className="muted-text">You are watching this match and can join when the host returns the room to lobby.</p>
+                    <p className="muted-text">You are watching this match and do not need to confirm ready.</p>
                   ) : (
                     <button
                       type="button"
@@ -790,7 +797,7 @@ export function RoomPage({
               </div>
 
               <p className="muted-text" style={{ marginTop: "24px" }}>
-                Return to the lobby to reset tokens, let players leave safely, and bring current spectators into the next game.
+                Return to the lobby to reset tokens and keep current spectators in watch-only mode.
               </p>
 
               <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "24px", justifyContent: "center", flexWrap: "wrap" }}>

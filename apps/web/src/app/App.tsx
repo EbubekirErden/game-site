@@ -104,7 +104,7 @@ function writePersistedSession(session: PersistedSession): void {
 function getPhaseMessage(gameId: AppGameState["gameId"], phase: AppGameState["phase"], selfRole: AppGameState["selfRole"]): string {
   if (selfRole === "spectator") {
     if (phase === "match_over") return "Match over. The host can return everyone to the lobby.";
-    return "You are watching as a spectator. You can join as a player when the match returns to lobby.";
+    return "You are watching as a spectator. Spectators are not counted for ready checks or turn flow.";
   }
 
   if (phase === "lobby") {
@@ -151,7 +151,7 @@ export function App() {
   const [joinCode, setJoinCode] = React.useState(() => routeRoomId ?? initialSession.roomId ?? "");
   const [savedRoomId, setSavedRoomId] = React.useState<string | null>(initialSession.roomId);
   const [state, setState] = React.useState<AppGameState | null>(null);
-  const [pendingAction, setPendingAction] = React.useState<"create" | "join" | null>(null);
+  const [pendingAction, setPendingAction] = React.useState<"create" | "join" | "watch" | null>(null);
   const [message, setMessage] = React.useState("Enter your name, then create or join a room.");
   const [activeEffectPresentation, setActiveEffectPresentation] = React.useState<PrivateEffectPresentation | null>(null);
   const [chatMessages, setChatMessages] = React.useState<RoomChatMessage[]>([]);
@@ -362,6 +362,44 @@ export function App() {
       roomId: normalizedCode,
       name: trimmedName,
       playerId: playerIdRef.current,
+      asSpectator: false,
+    }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
+      if (!response.ok) {
+        setPendingAction(null);
+        setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+        return;
+      }
+
+      if (response.roomId) {
+        setJoinCode(response.roomId);
+        setSavedRoomId(response.roomId);
+        navigate(`/games/${selectedGame}/rooms/${response.roomId}`);
+      }
+    });
+  }
+
+  function handleWatchRoom() {
+    if (!selectedGame) {
+      setMessage("Choose a game first.");
+      return;
+    }
+
+    const trimmedName = requireName();
+    if (!trimmedName) return;
+
+    const normalizedCode = joinCode.trim().toUpperCase();
+    if (!normalizedCode) {
+      setMessage("Enter the room code to watch.");
+      return;
+    }
+
+    setPendingAction("watch");
+    setMessage(`Joining room ${normalizedCode} as a spectator...`);
+    socket.emit("room:join", {
+      roomId: normalizedCode,
+      name: trimmedName,
+      playerId: playerIdRef.current,
+      asSpectator: true,
     }, (response: { ok: boolean; roomId?: string; reason?: string }) => {
       if (!response.ok) {
         setPendingAction(null);
@@ -398,6 +436,29 @@ export function App() {
 
     setActiveEffectPresentation(null);
     socket.emit("match:return-to-lobby", { roomId: state.roomId });
+  }
+
+  function handleBecomeSpectator(): Promise<boolean> {
+    if (!isLoveLetterState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit(
+        "room:become-spectator",
+        {
+          roomId: state.roomId,
+        },
+        (response: { ok: boolean; reason?: string }) => {
+          if (!response.ok) {
+            setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+            resolve(false);
+            return;
+          }
+
+          setMessage("You are now watching as a spectator.");
+          resolve(true);
+        },
+      );
+    });
   }
 
   function handleAddBot(): Promise<boolean> {
@@ -681,7 +742,8 @@ export function App() {
               onPlayerNameChange={setPlayerName}
               onJoinCodeChange={setJoinCode}
               onCreateRoom={handleCreateRoom}
-            onJoinRoom={handleJoinRoom}
+              onJoinRoom={handleJoinRoom}
+              onWatchRoom={handleWatchRoom}
           />
         }
       />
@@ -713,6 +775,7 @@ export function App() {
                 onCardinalPeek={handleCardinalPeek}
                 chatMessages={chatMessages}
                 onSendChatMessage={handleSendChatMessage}
+                onBecomeSpectator={handleBecomeSpectator}
                 onLeaveRoom={() => handleLeaveRoom(false)}
               />
             ) : isSkullKingState(state) ? (

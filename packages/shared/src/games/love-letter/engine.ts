@@ -286,6 +286,7 @@ export function addPlayer(state: GameState, id: string, name: string): GameState
 
   return {
     ...state,
+    creatorId: state.players.some((player) => player.id === state.creatorId) ? state.creatorId : id,
     players: [...state.players, player],
     log: [...state.log, { type: "player_joined", playerId: id, name }],
   };
@@ -427,44 +428,35 @@ export function removePlayer(state: GameState, playerId: PlayerID): GameState {
   return nextState;
 }
 
+export function movePlayerToSpectators(state: GameState, playerId: PlayerID): GameState {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player) return state;
+
+  const withoutPlayer = removePlayer(state, playerId);
+  return addSpectator(withoutPlayer, player.id, player.name);
+}
+
 export function resetMatchToLobby(state: GameState): GameState {
   if (state.phase !== "match_over") return state;
-
-  const promotedPlayers: PlayerState[] = state.spectators
-    .filter((spectator) => !state.players.some((player) => player.id === spectator.id))
-    .map((spectator) => ({
-      id: spectator.id,
-      name: spectator.name,
-      hand: [],
-      discardPile: [],
-      status: "active" as const,
-      protectedUntilNextTurn: false,
-      tokens: 0,
-      isReady: false,
-    }));
 
   return {
     ...state,
     phase: "lobby",
     creatorId: state.players.some((player) => player.id === state.creatorId)
       ? state.creatorId
-      : state.players[0]?.id ?? promotedPlayers[0]?.id ?? state.creatorId,
-    players: [
-      ...state.players.map((player) => ({
-        ...player,
-        hand: [],
-        discardPile: [],
-        status: "active" as const,
-        protectedUntilNextTurn: false,
-        tokens: 0,
-        isReady: false,
-      })),
-      ...promotedPlayers,
-    ],
+      : state.players[0]?.id ?? state.creatorId,
+    players: state.players.map((player) => ({
+      ...player,
+      hand: [],
+      discardPile: [],
+      status: "active" as const,
+      protectedUntilNextTurn: false,
+      tokens: 0,
+      isReady: false,
+    })),
     round: null,
     roundWinnerIds: [],
     matchWinnerIds: [],
-    spectators: [],
   };
 }
 

@@ -41,6 +41,8 @@ export function formatErrorReason(reason: string): string {
       return "The mode can only be changed while the room is still in the lobby.";
     case "cannot_add_bot_now":
       return "Bots can only be added while the room is still in the lobby.";
+    case "cannot_spectate_now":
+      return "That room cannot switch you into spectator mode right now.";
     case "game_already_started":
       return "That room already started, so new players cannot join right now.";
     case "game_not_available":

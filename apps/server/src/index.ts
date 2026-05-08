@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { Server } from "socket.io";
 
 import { isGameId } from "@game-site/shared";
-import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, movePlayerToSpectators, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toBotObservation, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
+import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, movePlayerToSpectators, moveSpectatorToPlayers, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toBotObservation, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
 import type { BotMemorySnapshot, BotObservedCardFact, CardInstance, GameState as LoveLetterGameState, PrivateEffectPresentation } from "@game-site/shared/games/love-letter/types";
 import {
   addPlayer as addSkullKingPlayer,
@@ -387,9 +387,9 @@ function emitChatHistory(roomId: string, playerId: string): void {
   io.to(getPlayerKey(roomId, playerId)).emit("chat:history", roomChats.get(roomId) ?? []);
 }
 
-function ensureBotsReady(roomId: string): void {
+function ensureBotsReady(roomId: string): boolean {
   const room = getLoveLetterRoom(roomId);
-  if (!room) return;
+  if (!room) return false;
 
   let next = room.state;
   for (const player of room.state.players) {
@@ -400,7 +400,10 @@ function ensureBotsReady(roomId: string): void {
 
   if (next !== room.state) {
     setRoomState(roomId, room, next);
+    return true;
   }
+
+  return false;
 }
 
 function runBotTurn(roomId: string): void {
@@ -474,7 +477,9 @@ function scheduleBotAction(roomId: string): void {
   if (!room) return;
 
   if (room.state.phase === "lobby" || room.state.phase === "round_over") {
-    ensureBotsReady(roomId);
+    if (ensureBotsReady(roomId)) {
+      emitRoomState(roomId);
+    }
     return;
   }
 
@@ -623,6 +628,41 @@ io.on("connection", (socket) => {
     }
 
     const next = movePlayerToSpectators(room.state, binding.playerId);
+    setRoomState(normalizedRoomId, room, next);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("room:become-player", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = rooms.get(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    if (room.gameId !== "love-letter") {
+      respond?.({ ok: false, reason: "cannot_spectate_now" });
+      return;
+    }
+
+    if (!room.state.spectators.some((spectator) => spectator.id === binding.playerId)) {
+      respond?.({ ok: false, reason: "player_not_found" });
+      return;
+    }
+
+    if (room.state.phase !== "lobby") {
+      respond?.({ ok: false, reason: "game_already_started" });
+      return;
+    }
+
+    const next = moveSpectatorToPlayers(room.state, binding.playerId);
     setRoomState(normalizedRoomId, room, next);
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });

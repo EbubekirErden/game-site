@@ -461,6 +461,29 @@ export function App() {
     });
   }
 
+  function handleBecomePlayer(): Promise<boolean> {
+    if (!isLoveLetterState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit(
+        "room:become-player",
+        {
+          roomId: state.roomId,
+        },
+        (response: { ok: boolean; reason?: string }) => {
+          if (!response.ok) {
+            setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+            resolve(false);
+            return;
+          }
+
+          setMessage("You are back in the game as a player.");
+          resolve(true);
+        },
+      );
+    });
+  }
+
   function handleAddBot(): Promise<boolean> {
     if (!isLoveLetterState(state)) return Promise.resolve(false);
 
@@ -776,6 +799,7 @@ export function App() {
                 chatMessages={chatMessages}
                 onSendChatMessage={handleSendChatMessage}
                 onBecomeSpectator={handleBecomeSpectator}
+                onBecomePlayer={handleBecomePlayer}
                 onLeaveRoom={() => handleLeaveRoom(false)}
               />
             ) : isSkullKingState(state) ? (

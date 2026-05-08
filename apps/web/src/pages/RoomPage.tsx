@@ -49,6 +49,7 @@ type RoomPageProps = {
   chatMessages: RoomChatMessage[];
   onSendChatMessage: (text: string) => Promise<boolean>;
   onBecomeSpectator: () => Promise<boolean>;
+  onBecomePlayer: () => Promise<boolean>;
   onLeaveRoom: () => void;
 };
 
@@ -84,6 +85,7 @@ export function RoomPage({
   chatMessages,
   onSendChatMessage,
   onBecomeSpectator,
+  onBecomePlayer,
   onLeaveRoom,
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
@@ -492,6 +494,10 @@ export function RoomPage({
             <button type="button" className="secondary-button topbar-leave-button" onClick={() => void onBecomeSpectator()}>
               Spectate
             </button>
+          ) : showLobby ? (
+            <button type="button" className="secondary-button topbar-leave-button" onClick={() => void onBecomePlayer()}>
+              Join Game
+            </button>
           ) : null}
           <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
         </div>
@@ -558,16 +564,22 @@ export function RoomPage({
             </section>
           )}
 
-          {showLobby && !selfSpectator && (
+          {showLobby && (
             <section className="game-panel slim-panel">
               <h3>Your Status</h3>
-              <button
-                type="button"
-                className={`primary-button full-width ${self?.isReady ? "is-ready-btn" : ""}`}
-                onClick={() => onToggleReady(!self?.isReady)}
-              >
-                {self?.isReady ? "Ready to Start!" : "Click when Ready"}
-              </button>
+              {selfSpectator ? (
+                <p className="muted-text" style={{ marginTop: 0 }}>
+                  You are currently watching only. Rejoin as a player if you want to ready up and take turns again.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className={`primary-button full-width ${self?.isReady ? "is-ready-btn" : ""}`}
+                  onClick={() => onToggleReady(!self?.isReady)}
+                >
+                  {self?.isReady ? "Ready to Start!" : "Click when Ready"}
+                </button>
+              )}
               
               {isCreator && (
                 <button type="button" className={`full-width mt-2 ${allReady ? "ready-start-btn" : "secondary-button"}`} onClick={onStartRound} disabled={!allReady}>

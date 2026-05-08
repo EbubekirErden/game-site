@@ -758,7 +758,10 @@ export function RoomPage({
 
                 <div className="table-grid">
                   {state.players?.map((player) => (
-                    <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
+                    <div
+                      key={player.id}
+                      className={`table-zone ${player.status !== "active" ? "is-eliminated-zone" : ""}`}
+                    >
                       <div className="zone-nameplate">
                         {player.name} {player.id === state.selfPlayerId && "(You)"}
                         <span className="token-count">
@@ -965,7 +968,10 @@ export function RoomPage({
                 
                 <div className="table-grid">
                   {state.players?.map((player) => (
-                    <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
+                    <div
+                      key={player.id}
+                      className={`table-zone ${player.status !== "active" ? "is-eliminated-zone" : ""} ${state.phase === "in_round" && state.round?.currentPlayerId === player.id ? "is-current-turn" : ""}`}
+                    >
                       <div className="zone-nameplate">
                         {player.name} {player.id === state.selfPlayerId && "(You)"}
                         <span className="token-count">

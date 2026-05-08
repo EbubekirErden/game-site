@@ -1,7 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft,
   Check,
   Coins,
   Copy,
@@ -20,12 +19,18 @@ import type { CardID, GameEvent, LoveLetterMode, PlayerViewState, PrivateEffectP
 import { HistoryEventRow, HistoryTape, shouldShowActivityEvent } from "../components/HistoryTape.js";
 import { CardInfoPopup } from "../components/CardInfoPopup.js";
 import { CardView } from "../components/CardView.js";
-import { DiscardResolutionOverlay } from "../components/DiscardResolutionOverlay.js";
 import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
 import { RoomChat } from "../components/RoomChat.js";
 import type { RoomChatMessage } from "../app/App.js";
-import { cardNamesByValue, playerNameById } from "../lib/gamePresentation.js";
+import { playerNameById } from "../lib/gamePresentation.js";
 import { Particles } from "../components/Particles.js";
+import { RoomTopBar } from "../components/RoomTopBar.js";
+import { PlayerSeat } from "../components/PlayerSeat.js";
+import { ActionStage } from "../components/ActionStage.js";
+import type { PlayFlowState } from "../components/ActionStage.js";
+import { FloatingCardLayer } from "../components/FloatingCardLayer.js";
+import type { FlyingCardAnimation } from "../components/FloatingCardLayer.js";
+import { useCardZoneRegistry } from "../lib/useCardZoneRegistry.js";
 
 type RoomPageProps = {
   state: PlayerViewState;
@@ -90,7 +95,9 @@ export function RoomPage({
   onBecomePlayer,
   onLeaveRoom,
 }: RoomPageProps) {
-  const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
+  const [playFlow, setPlayFlow] = React.useState<PlayFlowState>({ step: "idle" });
+  const [flyingCards, setFlyingCards] = React.useState<FlyingCardAnimation[]>([]);
+  const { registerZone, getZoneRect } = useCardZoneRegistry();
   const [copied, setCopied] = React.useState(false); // Copy button state
   const [infoCardId, setInfoCardId] = React.useState<CardID | null>(null);
   const [announcementQueue, setAnnouncementQueue] = React.useState<LogAnnouncement[]>([]);
@@ -243,7 +250,7 @@ export function RoomPage({
   }
 
   React.useEffect(() => {
-    if (!isMyTurn || isCardinalDecisionPending) setPlayStage("select_card");
+    if (!isMyTurn || isCardinalDecisionPending) setPlayFlow({ step: "idle" });
   }, [isCardinalDecisionPending, isMyTurn, state.round?.turnNumber, state.phase]);
 
   React.useEffect(() => {
@@ -309,27 +316,46 @@ export function RoomPage({
 
   const handleInitiatePlay = async () => {
     if (targetNeeded || guessNeeded) {
-      setPlayStage("setup_action");
+      if (targetNeeded && !guessNeeded) {
+        setPlayFlow({
+          step: "choosing_target",
+          cardInstanceId: selectedInstanceId!,
+          legalTargets: selectableTargetIds,
+        });
+      } else if (guessNeeded && hasSelectableTarget) {
+        setPlayFlow({
+          step: "choosing_guess",
+          cardInstanceId: selectedInstanceId!,
+          targetId: targetPlayerId || selectableTargetIds[0] || "",
+        });
+      } else {
+        setPlayFlow({
+          step: "confirming",
+          cardInstanceId: selectedInstanceId!,
+          targetIds: selectedTargetPlayerIds,
+          guessedValue,
+        });
+      }
       return;
     }
 
     const didPlay = await onPlayCard();
     if (didPlay) {
-      setPlayStage("select_card");
+      setPlayFlow({ step: "idle" });
     }
   };
 
   const handleConfirmPlay = async () => {
     const didPlay = await onPlayCard();
     if (didPlay) {
-      setPlayStage("select_card");
+      setPlayFlow({ step: "idle" });
     }
   };
 
   const handleBackToHand = () => {
     onSelectCard(null);
     onTargetPlayerIdsChange([]);
-    setPlayStage("select_card");
+    setPlayFlow({ step: "idle" });
   };
 
   const handleCopyCode = () => {
@@ -358,13 +384,32 @@ export function RoomPage({
     }
 
     if (cardNeedsSetup(handCard.cardId)) {
-      setPlayStage("setup_action");
+      if (targetNeeded && !guessNeeded) {
+        setPlayFlow({
+          step: "choosing_target",
+          cardInstanceId: instanceId,
+          legalTargets: selectableTargetIds,
+        });
+      } else if (guessNeeded && hasSelectableTarget) {
+        setPlayFlow({
+          step: "choosing_guess",
+          cardInstanceId: instanceId,
+          targetId: targetPlayerId || selectableTargetIds[0] || "",
+        });
+      } else {
+        setPlayFlow({
+          step: "confirming",
+          cardInstanceId: instanceId,
+          targetIds: selectedTargetPlayerIds,
+          guessedValue,
+        });
+      }
       return;
     }
 
     const didPlay = await onPlayCard(instanceId);
     if (didPlay) {
-      setPlayStage("select_card");
+      setPlayFlow({ step: "idle" });
     }
   };
 
@@ -466,87 +511,32 @@ export function RoomPage({
   const isSpotlightActive = isMyTurn && targetNeeded;
 
   return (
-    <main className={`table-layout ${isSpotlightActive ? "is-spotlight-active" : ""}`}>
+    <main className={`table-layout love-letter-room ${isSpotlightActive ? "is-spotlight-active" : ""}`}>
       {activeAnnouncement ? (
         <div className={`table-log-announcement is-${announcementPhase}`} aria-live="polite" aria-atomic="true">
           <HistoryEventRow event={activeAnnouncement.event} state={state} className="log-item-announcement" />
         </div>
       ) : null}
       <Particles active={showBetweenRounds || showMatchOver} type="confetti" count={80} />
-      <header className="table-topbar">
-        <div className="topbar-info">
-          <h1>{gameTitle}</h1>
-          <span className="phase-badge">{showLobby ? "Waiting Room" : state.phase?.replaceAll("_", " ")}</span>
-          <span className="phase-badge">{state.mode === "premium" ? "Premium (5-8 people)" : "Classic"}</span>
-          {selfSpectator ? <span className="phase-badge spectator-badge">Spectator</span> : null}
-          <button
-            type="button"
-            className="room-code-badge room-code-button copyable"
-            onClick={handleCopyCode}
-            title={copied ? "Room code copied" : "Copy room code"}
-          >
-            <span>Room: {state.roomId}</span>
-            {copied ? <Check size={15} strokeWidth={2.4} aria-hidden="true" /> : <Copy size={15} strokeWidth={2.1} aria-hidden="true" />}
-          </button>
-        </div>
-        <div className="topbar-actions">
-          {state.phase === "in_round" && (
-            <span className={`turn-indicator ${isMyTurn ? "is-my-turn" : ""}`}>
-              {isMyTurn ? "Your Turn" : currentTurnName ? `${currentTurnName}'s Turn` : "Turn in progress"}
-            </span>
-          )}
-          {!selfSpectator ? (
-            <button type="button" className="secondary-button topbar-leave-button" onClick={() => void onBecomeSpectator()}>
-              Spectate
-            </button>
-          ) : showLobby ? (
-            <button type="button" className="secondary-button topbar-leave-button" onClick={() => void onBecomePlayer()}>
-              Join Game
-            </button>
-          ) : null}
-          <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
-        </div>
-      </header>
+      
+      <RoomTopBar
+        gameTitle={gameTitle}
+        state={state}
+        isMyTurn={isMyTurn}
+        currentTurnName={currentTurnName}
+        selfSpectator={selfSpectator}
+        copied={copied}
+        onCopyCode={handleCopyCode}
+        onBecomeSpectator={onBecomeSpectator}
+        onBecomePlayer={onBecomePlayer}
+        onLeaveRoom={onLeaveRoom}
+      />
 
       <div className="table-workspace">
         <aside className="table-sidebar table-left-sidebar">
-          <section className="game-panel slim-panel">
-            <h3>Players</h3>
-            <div className="player-list-slim">
-              {state.players?.map((player) => (
-                <div key={player.id} className={`player-row ${player.id === state.selfPlayerId ? "is-self" : ""} ${player.status !== "active" ? "is-eliminated" : ""}`}>
-                  <div className="player-row-info">
-                    <strong className="player-name-row">
-                      <span>{player.name}</span>
-                      {player.id === state.creatorId ? <Crown size={14} strokeWidth={2} aria-hidden="true" /> : null}
-                    </strong>
-                    <span className="player-status-text">
-                      <span className="status-inline">{player.status}</span>
-                      {player.protectedUntilNextTurn ? (
-                        <span className="status-inline">
-                          <Shield size={12} strokeWidth={2.1} aria-hidden="true" />
-                          Protected
-                        </span>
-                      ) : null}
-                      <span className="status-inline">
-                        <Coins size={12} strokeWidth={2.1} aria-hidden="true" />
-                        {player.tokens || 0}
-                      </span>
-                      {forcedTargetPlayerId === player.id ? (
-                        <span className="status-inline">
-                          <Swords size={12} strokeWidth={2.1} aria-hidden="true" />
-                          Marked
-                        </span>
-                      ) : null}
-                      {jesterTargetedPlayerIds.has(player.id) ? (
-                        <span className="status-inline">Jester</span>
-                      ) : null}
-                    </span>
-                  </div>
-                  {showReadyPills && <span className={`mini-ready-pill ${player.isReady ? "ready" : ""}`} title={player.isReady ? "Ready" : "Not ready"} />}
-                </div>
-              ))}
-            </div>
+          <section className="game-panel activity-panel">
+            <h3>Activity Log</h3>
+            <HistoryTape events={visibleLogEvents} state={state} />
           </section>
 
           {state.spectators.length > 0 && (
@@ -672,7 +662,7 @@ export function RoomPage({
           )}
         </aside>
 
-        <section className="table-center">
+        <section className="table-center love-letter-table">
           {showLobby ? (
             <div className="game-panel center-lobby">
               <h2>Waiting for players...</h2>
@@ -743,15 +733,13 @@ export function RoomPage({
                       {allReady ? (
                         <span className="button-content">
                           <Rocket size={16} strokeWidth={2.2} aria-hidden="true" />
-                          Start Next Round
+                          Next Round
                         </span>
                       ) : (
-                        `Waiting for everyone... (${readyCount}/${playerCount})`
+                        `Waiting for players... (${readyCount}/${playerCount})`
                       )}
                     </button>
-                  ) : (
-                    <p className="muted-text">{allReady ? "Host can start the next round now." : `Ready players: ${readyCount}/${playerCount}`}</p>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -847,223 +835,148 @@ export function RoomPage({
                   <p className={`status-banner-text is-${statusTone}`}>{statusMessage}</p>
                 </div>
               )}
-              <div className="game-panel player-area">
-                {playStage === "select_card" ? (
-                  <div className="focus-hand-area">
-                    <div className="player-area-header">
-                      <h3>{selfSpectator ? "Spectator View" : isMyTurn ? "Your Turn - Select a Card" : "Your Hand"}</h3>
-                    </div>
-                    {selfSpectator ? (
-                      <p className="muted-text">You can follow the public table, discards, turns, and log. Private hands stay hidden.</p>
-                    ) : (
-                      <div className="hand-cards-large">
-                        <AnimatePresence>
-                          {self?.hand?.map((card, index) => (
-                            <motion.div
-                              className="hand-card-wrapper"
-                              key={card.instanceId}
-                              layoutId={card.instanceId + "_wrapper"}
-                              initial={{ opacity: 0, x: 300, y: -300, scale: 0.2 }}
-                              animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-                              exit={{ opacity: 0, y: -50, scale: 0.8 }}
-                              transition={{
-                                type: "spring",
-                                stiffness: 260,
-                                damping: 20,
-                                delay: index * 0.1,
-                              }}
-                            >
-                              <CardView
-                                card={card}
-                                selectable
-                                selected={card.instanceId === selectedInstanceId}
-                                onClick={() => openCardInfo(card.cardId)}
-                                spotlight={card.instanceId === selectedInstanceId}
-                              />
-                              {isMyTurn ? (
-                                <button 
-                                  type="button" 
-                                  className="primary-button hand-card-discard-btn" 
-                                  onClick={() => void handleCardDiscardIntent(card.instanceId)}
-                                >
-                                  Discard
-                                </button>
-                              ) : null}
-                            </motion.div>
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    )}
+              
+              <div className="opponent-rail">
+                {state.players?.filter(p => p.id !== state.selfPlayerId).map(player => (
+                  <div key={player.id} className="opponent-seat-wrapper" ref={registerZone(`player:${player.id}:area`)}>
+                    <PlayerSeat
+                      player={player}
+                      state={state}
+                      isCurrentTurn={state.round?.currentPlayerId === player.id}
+                      isTargetable={selectableTargetIds.includes(player.id)}
+                      isProtected={player.id !== self?.id && player.protectedUntilNextTurn}
+                      isSelectedTarget={selectedTargetPlayerIds.includes(player.id)}
+                      isEliminated={player.status !== "active"}
+                      isSelf={false}
+                      showReadyPill={showReadyPills}
+                      onTarget={() => handleTargetToggle(player.id)}
+                    />
                   </div>
-                ) : (
-                  <div className="focus-action-area">
-                    <div className="step-2-header">
-                      <button type="button" className="secondary-button button-content" onClick={handleBackToHand}>
-                        <ArrowLeft size={16} strokeWidth={2.2} aria-hidden="true" />
-                        Back to Hand
-                      </button>
-                      <h3>You are discarding: {selectedCardDef?.name ?? "a card"}</h3>
-                    </div>
-                    
-                    <div className="play-stage-horizontal">
-                      <div className={`stage-card-slot ${!selectedCard ? "is-empty" : ""}`}>
-                        {selectedCard ? <CardView card={selectedCard} spotlight selectable onClick={() => openCardInfo(selectedCard.cardId)} /> : <div className="empty-slot">Waiting for table update...</div>}
-                      </div>
-
-                      <div className="stage-actions">
-                        {mustPlayCountess && (
-                          <p className="error-text">
-                            You are holding Countess, so the rules force you to play Countess instead of Prince or King.
-                          </p>
-                        )}
-
-                        {forcedTargetPlayerId ? (
-                          <p className="muted-text">
-                            Sycophant is active: the next targeting effect must include {playerNameById(state, forcedTargetPlayerId)}.
-                          </p>
-                        ) : null}
-
-                        {targetNeeded && (
-                          <div className="selection-group">
-                            <label className="dark-label">
-                              {multiTargetNeeded ? "1. Choose Target Players" : "1. Choose a Target"}
-                            </label>
-                            {cardId === "cardinal" ? (
-                              <p className="muted-text">Cardinal needs exactly 2 players, and you may include yourself.</p>
-                            ) : null}
-                            {targetHintText && <p className="muted-text">{targetHintText}</p>}
-                            <div className="selection-grid">
-                              {targetOptions.map(({ player, selectable, protectedByHandmaid }) => (
-                                <button 
-                                  key={player.id} 
-                                  type="button"
-                                  className={`grid-btn ${selectedTargetPlayerIds.includes(player.id) ? "selected" : ""} ${!selectable ? "is-disabled" : ""}`}
-                                  onClick={() => selectable && handleTargetToggle(player.id)}
-                                  disabled={!selectable}
-                                  title={protectedByHandmaid ? `${player.name} is protected by Handmaid.` : undefined}
-                                >
-                                  <span>{player.id === self?.id ? `${player.name} (You)` : player.name}</span>
-                                  {protectedByHandmaid && <span className="grid-btn-note">Protected</span>}
-                                  {forcedTargetPlayerId === player.id && <span className="grid-btn-note">Required</span>}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {guessNeeded && hasSelectableTarget && (
-                          <div className="selection-group">
-                            <label className="dark-label">2. Guess their Card</label>
-                            <div className="selection-grid">
-                              {guessValues.map((val) => (
-                                <button
-                                  key={val}
-                                  type="button"
-                                  className={`grid-btn ${guessedValue === val.toString() ? "selected" : ""}`}
-                                  onClick={() => onGuessedValueChange(val.toString())}
-                                >
-                                  <span className="guess-val">{val}</span>
-                                  <span className="guess-name">{cardNamesByValue(val, state.mode).join(" / ")}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <button
-                          type="button"
-                          className="primary-button play-btn"
-                          disabled={
-                            !isMyTurn ||
-                            isCardinalDecisionPending ||
-                            !selectedCard ||
-                            mustPlayCountess ||
-                            (targetNeeded && !isTargetSelectionValid && !canPlayWithoutTarget) ||
-                            (guessNeeded && hasSelectableTarget && !guessedValue)
-                          }
-                          onClick={handleConfirmPlay}
-                        >
-                          Confirm Discard
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                ))}
               </div>
 
-              <div className="game-panel board-area live-board-area">
-                <div className="board-header">
-                  <h3>Round Table</h3>
-                  <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
-                </div>
-                
-                {state.round?.deckCount ? (
-                  <div className="dynamic-deck-container">
-                    {Array.from({ length: Math.min(state.round.deckCount, 5) }).map((_, i) => (
-                      <div key={i} className="deck-card" style={{ transform: `translate(${i * -2}px, ${i * -2}px)` }} />
-                    ))}
+              <ActionStage
+                playFlow={playFlow}
+                stagedCard={selectedCard}
+                selectedTargetPlayerIds={selectedTargetPlayerIds}
+                guessedValue={guessedValue}
+                guessValues={guessValues}
+                mode={state.mode}
+                state={state}
+                isMyTurn={isMyTurn}
+                isCardinalDecisionPending={isCardinalDecisionPending}
+                targetHintText={targetHintText}
+                mustPlayCountess={mustPlayCountess}
+                canPlayWithoutTarget={canPlayWithoutTarget}
+                isTargetSelectionValid={isTargetSelectionValid}
+                hasSelectableTarget={hasSelectableTarget}
+                activeEffectPresentation={activeEffectPresentation}
+                stageRef={registerZone("stage:played")}
+                revealZoneRef={registerZone("stage:reveal")}
+                clashLeftRef={registerZone("stage:clash-left")}
+                clashRightRef={registerZone("stage:clash-right")}
+                onGuessedValueChange={onGuessedValueChange}
+                onConfirmPlay={handleConfirmPlay}
+                onCancelPlay={handleBackToHand}
+                onDismissEffect={onDismissEffect}
+                onCardinalPeek={onCardinalPeek}
+              />
+
+              <div className="self-player-rail">
+                <div className="rail-deck-zone">
+                  <div className="board-header">
+                    <h3>Deck</h3>
+                    <div className="deck-info">{state.round?.deckCount ?? 0} cards</div>
                   </div>
-                ) : null}
-                
-                <div className="table-grid">
-                  {state.players?.map((player) => (
-                    <div
-                      key={player.id}
-                      className={`table-zone ${player.status !== "active" ? "is-eliminated-zone" : ""} ${state.phase === "in_round" && state.round?.currentPlayerId === player.id ? "is-current-turn" : ""}`}
-                    >
-                      <div className="zone-nameplate">
-                        {player.name} {player.id === state.selfPlayerId && "(You)"}
-                        <span className="token-count">
-                          <Coins size={14} strokeWidth={2.1} aria-hidden="true" />
-                          {player.tokens || 0}
-                        </span>
-                      </div>
-                      
-                      {(!player.discardPile || player.discardPile.length === 0) ? (
-                         <span className="muted-text" style={{fontSize: '0.85rem'}}>No discards</span>
-                      ) : (
-                        <div className="discard-fan">
-                          <AnimatePresence>
-                            {player.discardPile?.map((card, index) => (
-                              <motion.div 
-                                className="fan-card" 
-                                key={card.instanceId} 
-                                style={{ zIndex: index }}
-
-                              >
-                                <CardView card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
-                              </motion.div>
-                            ))}
-                          </AnimatePresence>
-                        </div>
-                      )}
+                  {state.round?.deckCount ? (
+                    <div className="dynamic-deck-container" ref={registerZone("deck")}>
+                      {Array.from({ length: Math.min(state.round.deckCount, 5) }).map((_, i) => (
+                        <div key={i} className="deck-card" style={{ transform: `translate(${i * -2}px, ${i * -2}px)` }} />
+                      ))}
                     </div>
-                  ))}
-                </div>
-
-                <div className="board-meta-row">
+                  ) : null}
                   <div className="board-meta-card board-meta-card-burned">
-                    <span className="board-meta-eyebrow">Burned Setup Cards</span>
+                    <span className="board-meta-eyebrow">Burned Cards</span>
                     {(state.round?.visibleRemovedCards?.length ?? 0) > 0 ? (
                       <div className="discard-spread discard-spread-tight">
                         {state.round?.visibleRemovedCards?.map((card) => (
-                          <CardView
-                            key={card.instanceId}
-                            card={card}
-                            mini
-                            selectable
-                            onClick={() => openCardInfo(card.cardId)}
-                          />
+                          <CardView key={card.instanceId} card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
                         ))}
                       </div>
                     ) : (
-                      <p>No face-up setup cards were removed this round.</p>
+                      <p className="muted-text" style={{ fontSize: "0.85rem", marginTop: 4 }}>No face-up setup cards.</p>
                     )}
                   </div>
-                  <div className="board-meta-card">
-                    <span className="board-meta-eyebrow">Discard Reading Tip</span>
-                    <p>Public discards stay visible so everyone can track what has already been played.</p>
+                </div>
+
+                <div className="rail-hand-zone" ref={registerZone(`player:${state.selfPlayerId}:hand`)}>
+                  <div className="player-area-header">
+                    <h3>{selfSpectator ? "Spectator View" : isMyTurn ? "Your Turn - Select a Card" : "Your Hand"}</h3>
                   </div>
+                  {selfSpectator ? (
+                    <p className="muted-text">You can follow the public table, discards, turns, and log. Private hands stay hidden.</p>
+                  ) : (
+                    <div className="hand-cards-large">
+                      <AnimatePresence>
+                        {self?.hand?.map((card, index) => (
+                          <motion.div
+                            className="hand-card-wrapper"
+                            key={card.instanceId}
+                            layoutId={card.instanceId + "_wrapper"}
+                            initial={{ opacity: 0, x: 300, y: -300, scale: 0.2 }}
+                            animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -50, scale: 0.8 }}
+                            transition={{ type: "spring", stiffness: 260, damping: 20, delay: index * 0.1 }}
+                          >
+                            <CardView
+                              card={card}
+                              selectable
+                              selected={card.instanceId === selectedInstanceId}
+                              onClick={() => {
+                                if (isMyTurn && !isCardinalDecisionPending) {
+                                  void handleCardDiscardIntent(card.instanceId);
+                                  return;
+                                }
+
+                                openCardInfo(card.cardId);
+                              }}
+                              spotlight={card.instanceId === selectedInstanceId}
+                            />
+                            <button
+                              type="button"
+                              className="hand-card-info-btn"
+                              onClick={() => openCardInfo(card.cardId)}
+                              aria-label={`Open ${getCardDef(card.cardId)?.name ?? "card"} details`}
+                            >
+                              <Info size={16} strokeWidth={2.2} aria-hidden="true" />
+                            </button>
+                            {isMyTurn ? (
+                              <button type="button" className="primary-button hand-card-discard-btn" onClick={() => void handleCardDiscardIntent(card.instanceId)}>Play Card</button>
+                            ) : null}
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rail-discard-zone" ref={registerZone(`player:${state.selfPlayerId}:discard`)}>
+                   <div className="player-area-header">
+                     <h3>Your Discards</h3>
+                   </div>
+                   {(!self?.discardPile || self.discardPile.length === 0) ? (
+                     <span className="muted-text" style={{ fontSize: "0.85rem" }}>No discards yet</span>
+                   ) : (
+                     <div className="discard-fan">
+                       <AnimatePresence>
+                         {self?.discardPile?.map((card, index) => (
+                           <motion.div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
+                             <CardView card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
+                           </motion.div>
+                         ))}
+                       </AnimatePresence>
+                     </div>
+                   )}
                 </div>
               </div>
             </>
@@ -1071,13 +984,8 @@ export function RoomPage({
         </section>
 
         <aside className="table-sidebar table-right-sidebar">
-          <section className="game-panel activity-panel">
-            <h3>Activity Log</h3>
-            <HistoryTape events={visibleLogEvents} state={state} />
-          </section>
           <RoomChat messages={chatMessages} state={state} onSendMessage={onSendChatMessage} />
         </aside>
-
       </div>
       <LoveLetterInfoDrawer
         buttonClassName="info-trigger-button room-floating-info-button"
@@ -1090,14 +998,9 @@ export function RoomPage({
         buttonTitle="Open Love Letter rules and card guide"
         mode={state.mode}
       />
-      {activeEffectPresentation ? (
-        <DiscardResolutionOverlay
-          effect={activeEffectPresentation}
-          onDismiss={onDismissEffect}
-          onCardinalPeek={onCardinalPeek}
-        />
-      ) : null}
       {infoCardId ? <CardInfoPopup cardId={infoCardId} mode={state.mode} onClose={() => setInfoCardId(null)} /> : null}
+      
+      <FloatingCardLayer animations={flyingCards} />
     </main>
   );
 }

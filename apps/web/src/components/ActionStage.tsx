@@ -338,6 +338,7 @@ export function ActionStage({
   onCardinalPeek,
 }: ActionStageProps) {
   const cardDef = stagedCard ? getCardDef(stagedCard.cardId) : null;
+  const needsGuess = cardDef?.id === "guard" || cardDef?.id === "bishop";
   const targetName =
     selectedTargetPlayerIds.length === 1
       ? playerNameById(state, selectedTargetPlayerIds[0]!)
@@ -346,7 +347,7 @@ export function ActionStage({
         : null;
 
   const confirmSummary = cardDef
-    ? `Play ${cardDef.name}${targetName ? ` on ${targetName}` : ""}${guessedValue ? ` guessing value ${guessedValue}` : ""}?`
+    ? `Play ${cardDef.name}${targetName ? ` on ${targetName}` : ""}${needsGuess && guessedValue ? ` guessing value ${guessedValue}` : ""}?`
     : null;
 
   const canConfirm =
@@ -449,7 +450,7 @@ export function ActionStage({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25, delay: 0.1 }}
                 >
-                  Click a glowing player seat to target them
+                  Select a player
                 </motion.div>
               )}
 

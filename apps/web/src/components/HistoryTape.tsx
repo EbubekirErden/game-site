@@ -14,10 +14,9 @@ import {
 } from "lucide-react";
 
 import { getCardDef } from "@game-site/shared";
-import type { GameEvent, PlayerID, PlayerViewState, CardID } from "@game-site/shared";
+import type { GameEvent, PlayerID, PlayerViewState } from "@game-site/shared";
 
 import { playerNameById } from "../lib/gamePresentation.js";
-import { CardView } from "./CardView.js";
 
 type HistoryTapeProps = {
   events: GameEvent[];
@@ -73,7 +72,6 @@ function renderEventContent(event: GameEvent, state: PlayerViewState): {
   icon: React.ReactNode;
   content: React.ReactNode;
   tone: "info" | "danger" | "success" | "neutral" | "gold" | "protected";
-  miniCard?: CardID;
 } {
   switch (event.type) {
     case "player_joined":
@@ -122,8 +120,7 @@ function renderEventContent(event: GameEvent, state: PlayerViewState): {
       return {
         tone: "neutral",
         icon: <ArrowRightLeft size={16} strokeWidth={2.2} />,
-        content: <><PlayerChip playerId={event.playerId} state={state} /> played</>,
-        miniCard: event.cardId,
+        content: <><PlayerChip playerId={event.playerId} state={state} /> played <strong>{getCardDef(event.cardId).name}</strong>.</>,
       };
     case "card_guessed":
       return {
@@ -223,17 +220,12 @@ function renderEventContent(event: GameEvent, state: PlayerViewState): {
 }
 
 export function HistoryEventRow({ event, state, className = "" }: { event: GameEvent; state: PlayerViewState; className?: string }) {
-  const { tone, icon, content, miniCard } = renderEventContent(event, state);
+  const { tone, icon, content } = renderEventContent(event, state);
   return (
     <article className={`history-block is-${tone} ${className}`.trim()}>
       <div className="history-icon-wrapper">{icon}</div>
       <div className="history-content-wrapper">
         <div className="history-text">{content}</div>
-        {miniCard && (
-          <div className="history-minicard">
-            <CardView card={{ instanceId: "tape", cardId: miniCard }} mini selectable={false} />
-          </div>
-        )}
       </div>
     </article>
   );
@@ -260,7 +252,7 @@ export function HistoryTape({ events, state, emptyText = "No actions yet." }: Hi
             </motion.div>
           )}
           {recentEvents.map((event, index) => {
-            const { tone, icon, content, miniCard } = renderEventContent(event, state);
+            const { tone, icon, content } = renderEventContent(event, state);
             return (
               <motion.article
                 key={`${event.type}-${index}`}
@@ -273,15 +265,6 @@ export function HistoryTape({ events, state, emptyText = "No actions yet." }: Hi
                 <div className="history-icon-wrapper">{icon}</div>
                 <div className="history-content-wrapper">
                   <div className="history-text">{content}</div>
-                  {miniCard && (
-                    <div className="history-minicard">
-                      <CardView
-                        card={{ instanceId: "tape", cardId: miniCard }}
-                        mini
-                        selectable={false}
-                      />
-                    </div>
-                  )}
                 </div>
               </motion.article>
             );

@@ -316,17 +316,11 @@ export function RoomPage({
 
   const handleInitiatePlay = async () => {
     if (targetNeeded || guessNeeded) {
-      if (targetNeeded && !guessNeeded) {
+      if (targetNeeded) {
         setPlayFlow({
           step: "choosing_target",
           cardInstanceId: selectedInstanceId!,
           legalTargets: selectableTargetIds,
-        });
-      } else if (guessNeeded && hasSelectableTarget) {
-        setPlayFlow({
-          step: "choosing_guess",
-          cardInstanceId: selectedInstanceId!,
-          targetId: targetPlayerId || selectableTargetIds[0] || "",
         });
       } else {
         setPlayFlow({
@@ -355,6 +349,7 @@ export function RoomPage({
   const handleBackToHand = () => {
     onSelectCard(null);
     onTargetPlayerIdsChange([]);
+    onGuessedValueChange("");
     setPlayFlow({ step: "idle" });
   };
 
@@ -381,20 +376,16 @@ export function RoomPage({
       onGuessedValueChange("2");
     } else if (handCard.cardId === "bishop") {
       onGuessedValueChange("0");
+    } else {
+      onGuessedValueChange("");
     }
 
     if (cardNeedsSetup(handCard.cardId)) {
-      if (targetNeeded && !guessNeeded) {
+      if (targetNeeded) {
         setPlayFlow({
           step: "choosing_target",
           cardInstanceId: instanceId,
           legalTargets: selectableTargetIds,
-        });
-      } else if (guessNeeded && hasSelectableTarget) {
-        setPlayFlow({
-          step: "choosing_guess",
-          cardInstanceId: instanceId,
-          targetId: targetPlayerId || selectableTargetIds[0] || "",
         });
       } else {
         setPlayFlow({
@@ -478,23 +469,31 @@ export function RoomPage({
       return;
     }
 
-    const defaultTargetId = legalTargetSets[0]?.[0] ?? "";
-    if (!targetPlayerId) {
-      if (defaultTargetId) {
-        onTargetPlayerIdsChange([defaultTargetId]);
-      }
-      return;
-    }
-
     const selectedTargetStillValid = legalTargetSets.some((targetSet) => sameTargetSet(targetSet, [targetPlayerId]));
-    if (!selectedTargetStillValid) {
-      onTargetPlayerIdsChange(defaultTargetId ? [defaultTargetId] : []);
+    if (targetPlayerId && !selectedTargetStillValid) {
+      onTargetPlayerIdsChange([]);
     }
   }, [isTargetSelectionValid, legalTargetSets, multiTargetNeeded, onTargetPlayerIdsChange, sameTargetSet, selectedTargetPlayerIds, targetNeeded, targetPlayerId]);
 
   const handleTargetToggle = (playerId: string) => {
+    const stagedInstanceId = selectedInstanceId ?? "";
+
     if (!multiTargetNeeded) {
       onTargetPlayerIdsChange([playerId]);
+      if (guessNeeded) {
+        setPlayFlow({
+          step: "choosing_guess",
+          cardInstanceId: stagedInstanceId,
+          targetId: playerId,
+        });
+      } else {
+        setPlayFlow({
+          step: "confirming",
+          cardInstanceId: stagedInstanceId,
+          targetIds: [playerId],
+          guessedValue,
+        });
+      }
       return;
     }
 
@@ -506,6 +505,14 @@ export function RoomPage({
     const nextIds = [...selectedTargetPlayerIds, playerId];
     const trimmedNextIds = cardId === "cardinal" && nextIds.length > 2 ? nextIds.slice(nextIds.length - 2) : nextIds;
     onTargetPlayerIdsChange(trimmedNextIds);
+    if (legalTargetSets.some((targetSet) => sameTargetSet(targetSet, trimmedNextIds))) {
+      setPlayFlow({
+        step: "confirming",
+        cardInstanceId: stagedInstanceId,
+        targetIds: trimmedNextIds,
+        guessedValue,
+      });
+    }
   };
 
   const isSpotlightActive = isMyTurn && targetNeeded;

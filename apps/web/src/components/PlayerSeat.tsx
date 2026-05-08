@@ -100,7 +100,8 @@ export function PlayerSeat({
       {/* Hand zone — hidden card slot for opponents, actual cards for self */}
       <div className="seat-zone-block seat-hand-block">
         <span className="seat-zone-label">{isSelf ? "Hand" : "Hidden Hand"}</span>
-        <div className="seat-hand-zone">
+        <div className="seat-zone-panel seat-hand-panel">
+          <div className="seat-hand-zone">
           {isSelf ? (
             // Self: show actual cards if any
             player.hand && player.hand.length > 0 ? (
@@ -118,39 +119,40 @@ export function PlayerSeat({
               <div className="seat-empty-hand" />
             )
           ) : (
-            // Opponent: show hidden card back(s)
-            Array.from({ length: Math.max(player.hand?.length ?? 1, 0) }).map((_, i) => (
-              <div key={i} className="seat-hidden-card">
-                <div className="card-view-back-pattern" />
-                <div className="seat-hidden-crest">⚜️</div>
-              </div>
-            ))
+            // Opponent: keep one stable hidden cardback visible in the seat.
+            <div className="seat-hidden-card">
+              <div className="card-view-back-pattern" />
+              <div className="seat-hidden-crest">⚜️</div>
+            </div>
           )}
+          </div>
         </div>
       </div>
 
       {/* Discard mini-stack */}
       <div className="seat-zone-block seat-discard-block">
         <span className="seat-zone-label">Discard</span>
-        <div className="seat-discard-zone">
-          <AnimatePresence initial={false}>
-            {(player.discardPile ?? []).slice(-3).map((card, index) => (
-              <motion.div
-                key={card.instanceId}
-                className="seat-discard-card"
-                style={{ zIndex: index }}
-                initial={{ opacity: 0, scale: 0.7, y: -10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <CardView card={card} mini selectable={false} />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          {(player.discardPile ?? []).length === 0 && (
-            <span className="seat-no-discard">No discards</span>
-          )}
+        <div className="seat-zone-panel seat-discard-panel">
+          <div className="seat-discard-zone">
+            <AnimatePresence initial={false}>
+              {(player.discardPile ?? []).slice(-3).map((card, index) => (
+                <motion.div
+                  key={card.instanceId}
+                  className="seat-discard-card"
+                  style={{ zIndex: index }}
+                  initial={{ opacity: 0, scale: 0.7, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <CardView card={card} mini selectable={false} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {(player.discardPile ?? []).length === 0 && (
+              <span className="seat-no-discard">No discards</span>
+            )}
+          </div>
         </div>
       </div>
 

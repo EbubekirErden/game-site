@@ -1,7 +1,7 @@
 import { getCardCopies, getCardDef } from "@game-site/shared";
 import type { BotObservation, CardID, LoveLetterMode, PlayerID, PlayerViewState } from "@game-site/shared";
-import type { BotPlayDecision } from "./botBrain.js";
-import { listBotActionCandidates } from "./botBrain.js";
+import type { BotDecisionSummary, BotPlayDecision } from "./botBrain.js";
+import { listBotActionCandidates, summarizeBotDecision } from "./botBrain.js";
 
 // Heuristic tactic map:
 // - `getThreatScore`: "always pressure the current leader first"
@@ -10,6 +10,20 @@ import { listBotActionCandidates } from "./botBrain.js";
 // - `scorePairTactics`: direct pair-combo advice translated from tactics.md
 type VisiblePlayer = PlayerViewState["players"][number];
 type BotDifficulty = "smart" | "hard";
+type HeuristicCandidateAnalysis = {
+  decision: BotPlayDecision;
+  summary: BotDecisionSummary;
+  score: number;
+  reasoning: string[];
+};
+
+export type HeuristicBotAnalysis = {
+  decision: BotPlayDecision | null;
+  summary: BotDecisionSummary | null;
+  strategy: BotDifficulty;
+  legalCandidateCount: number;
+  topCandidates: HeuristicCandidateAnalysis[];
+};
 
 function getPlayer(view: BotObservation, playerId: PlayerID): VisiblePlayer | null {
   return view.players.find((player) => player.id === playerId) ?? null;
@@ -83,17 +97,55 @@ export function chooseHardBotPlay(view: BotObservation): BotPlayDecision | null 
 }
 
 function chooseHeuristicBotPlay(view: BotObservation, difficulty: BotDifficulty): BotPlayDecision | null {
+  return analyzeHeuristicBotPlay(view, difficulty).decision;
+}
+
+export function analyzeSmartBotPlay(view: BotObservation): HeuristicBotAnalysis {
+  return analyzeHeuristicBotPlay(view, "smart");
+}
+
+export function analyzeHardBotPlay(view: BotObservation): HeuristicBotAnalysis {
+  return analyzeHeuristicBotPlay(view, "hard");
+}
+
+function analyzeHeuristicBotPlay(view: BotObservation, difficulty: BotDifficulty): HeuristicBotAnalysis {
   const candidates = listBotActionCandidates(view);
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    return {
+      decision: null,
+      summary: null,
+      strategy: difficulty,
+      legalCandidateCount: 0,
+      topCandidates: [],
+    };
+  }
 
   // Add a small random tie-break so equally good plays do not look mechanical.
-  const scored = candidates.map((decision) => ({
-    decision,
-    score: scoreDecision(view, decision, difficulty) + Math.random() * (difficulty === "hard" ? 0.0005 : 0.001),
+  const scored = candidates.map((decision) => {
+    const summary = summarizeBotDecision(view, decision);
+    const reasoning = getDecisionReasoning(view, decision, difficulty);
+    return {
+      decision,
+      summary,
+      reasoning,
+      baseScore: scoreDecision(view, decision, difficulty),
+      randomTieBreak: Math.random() * (difficulty === "hard" ? 0.0005 : 0.001),
+    };
+  }).map((candidate) => ({
+    decision: candidate.decision,
+    summary: candidate.summary,
+    reasoning: candidate.reasoning,
+    score: candidate.baseScore + candidate.randomTieBreak,
   }));
   scored.sort((left, right) => right.score - left.score);
 
-  return scored[0]?.decision ?? null;
+  return {
+    decision: scored[0]?.decision ?? null,
+    summary: scored[0]?.summary ?? null,
+    strategy: difficulty,
+    legalCandidateCount: candidates.length,
+    topCandidates: scored.slice(0, 5),
+  };
 }
 
 export function chooseSmartCardinalPeekTarget(view: BotObservation): PlayerID | null {
@@ -226,6 +278,71 @@ function scoreDecision(view: BotObservation, decision: BotPlayDecision, difficul
   // After the play, reward hands that still contain safe, high-value follow-up cards.
   score += scoreHandSafetyAfterPlay(remainingCardIds, difficulty) * safetyWeight;
   return score;
+}
+
+function getDecisionReasoning(view: BotObservation, decision: BotPlayDecision, difficulty: BotDifficulty): string[] {
+  const notes: string[] = [];
+  const self = getSelfPlayer(view);
+  const playedCard = self?.hand.find((card) => card.instanceId === decision.instanceId);
+  if (!self || !playedCard) return ["decision references a card that is no longer in hand"];
+
+  const cardId = playedCard.cardId;
+  const handCardIds = self.hand.map((card) => card.cardId);
+  const targetId = decision.targetPlayerId ?? decision.targetPlayerIds?.[0] ?? null;
+  const knownTargetCard = targetId ? getKnownHandCard(view, targetId) : null;
+
+  if (mustPlayCountess(handCardIds)) {
+    notes.push("forced_countess_rule");
+  }
+
+  if (targetId) {
+    const player = getPlayer(view, targetId);
+    if (player && player.tokens > 0) notes.push("pressure_token_leader");
+    if (knownTargetCard) notes.push(`known_target_${knownTargetCard}`);
+  }
+
+  if (isLateRound(view)) {
+    notes.push("late_round_tempo");
+  }
+
+  switch (cardId) {
+    case "guard":
+    case "bishop":
+      notes.push(knownTargetCard ? "guess_from_known_information" : "guess_from_remaining_distribution");
+      break;
+    case "prince":
+      notes.push(targetId === self.id ? "self_cycle_line" : "force_discard_line");
+      break;
+    case "handmaid":
+      notes.push("protect_followup_card");
+      break;
+    case "baron":
+      notes.push("seek_favorable_compare");
+      break;
+    case "dowager_queen":
+      notes.push("seek_reverse_compare");
+      break;
+    case "king":
+      notes.push(difficulty === "hard" ? "careful_swap_window" : "swap_for_upgrade");
+      break;
+    case "priest":
+    case "baroness":
+      notes.push("gather_information");
+      break;
+    case "cardinal":
+      notes.push("disrupt_and_peek");
+      break;
+    case "jester":
+      notes.push("bet_on_round_winner");
+      break;
+    case "sycophant":
+      notes.push("shape_next_targeting_action");
+      break;
+    default:
+      break;
+  }
+
+  return notes;
 }
 
 function getBaseCardScore(cardId: CardID, difficulty: BotDifficulty = "smart"): number {

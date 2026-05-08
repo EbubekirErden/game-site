@@ -24,8 +24,9 @@ import {
   updateSettings as updateSkullKingSettings,
 } from "@game-site/shared/games/skull-king/engine";
 import type { SkullKingGameState } from "@game-site/shared/games/skull-king/types";
-import { chooseRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
-import { chooseHardBotPlay, chooseHardCardinalPeekTarget, getHardBotDisplayName, chooseSmartBotPlay, chooseSmartCardinalPeekTarget, getSmartBotDisplayName } from "./smartBotBrain.js";
+import { analyzeRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
+import { analyzeHardBotPlay, chooseHardCardinalPeekTarget, getHardBotDisplayName, chooseSmartCardinalPeekTarget, analyzeSmartBotPlay, getSmartBotDisplayName } from "./smartBotBrain.js";
+import { logBotCardinalPeek, logHeuristicBotDecision, logRandomBotDecision } from "./botTelemetry.js";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -417,6 +418,13 @@ function runBotTurn(roomId: string): void {
       : strategy === "hard"
         ? chooseHardCardinalPeekTarget(observation)
         : chooseRandomCardinalPeekTarget(observation);
+    logBotCardinalPeek(
+      roomId,
+      observation,
+      strategy,
+      targetPlayerId,
+      targetPlayerId ? ["peek_highest_value_or_most_threatening_target"] : ["no_pending_cardinal_target_available"],
+    );
     if (!targetPlayerId) return;
 
     const result = cardinalPeekAction(room.state, cardinalActorId, targetPlayerId);
@@ -433,11 +441,18 @@ function runBotTurn(roomId: string): void {
 
   const observation = toBotObservation(room.state, currentPlayerId, getBotMemory(roomId, currentPlayerId));
   const strategy = getBotStrategy(roomId, currentPlayerId);
-  const decision = strategy === "smart"
-    ? chooseSmartBotPlay(observation)
+  const heuristicAnalysis = strategy === "smart"
+    ? analyzeSmartBotPlay(observation)
     : strategy === "hard"
-      ? chooseHardBotPlay(observation)
-      : chooseRandomBotPlay(observation);
+      ? analyzeHardBotPlay(observation)
+      : null;
+  const randomAnalysis = strategy === "random" ? analyzeRandomBotPlay(observation) : null;
+  const decision = heuristicAnalysis?.decision ?? randomAnalysis?.decision ?? null;
+  if (heuristicAnalysis) {
+    logHeuristicBotDecision(roomId, observation, heuristicAnalysis);
+  } else if (randomAnalysis) {
+    logRandomBotDecision(roomId, observation, randomAnalysis);
+  }
   if (!decision) return;
 
   const result = playCardAction(room.state, currentPlayerId, decision.instanceId, {

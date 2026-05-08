@@ -7,6 +7,36 @@ export type BotPlayDecision = {
   guessedValue?: number;
 };
 
+export type BotDecisionCategory =
+  | "guess"
+  | "information"
+  | "compare"
+  | "protection"
+  | "force_discard"
+  | "swap"
+  | "manipulation"
+  | "bet"
+  | "forced_play"
+  | "self_target"
+  | "leader_pressure"
+  | "no_target";
+
+export type BotDecisionSummary = {
+  actionKey: string;
+  cardId: CardID | null;
+  targetPlayerIds: string[];
+  guessedValue: number | null;
+  categories: BotDecisionCategory[];
+  summary: string;
+};
+
+export type RandomBotAnalysis = {
+  decision: BotPlayDecision | null;
+  summary: BotDecisionSummary | null;
+  legalCandidateCount: number;
+  note: string;
+};
+
 type VisiblePlayer = PlayerViewState["players"][number];
 
 function sample<T>(items: T[]): T | null {
@@ -57,6 +87,12 @@ function cardChoosesPlayers(cardId: CardID): boolean {
 function getSelfPlayer(view: BotObservation): VisiblePlayer | null {
   const self = view.players.find((player) => player.id === view.selfPlayerId);
   return self ?? null;
+}
+
+function getDecisionCardId(view: BotObservation, decision: BotPlayDecision): CardID | null {
+  const self = getSelfPlayer(view);
+  const card = self?.hand.find((candidate) => candidate.instanceId === decision.instanceId);
+  return card?.cardId ?? null;
 }
 
 function getLegalTargetSets(view: BotObservation, player: VisiblePlayer, playedCardId: CardID): string[][] {
@@ -192,9 +228,108 @@ export function listBotActionCandidates(view: BotObservation): BotPlayDecision[]
   return buildCandidateActions(view, player);
 }
 
+export function encodeBotDecision(decision: BotPlayDecision): string {
+  const targetPlayerIds = decision.targetPlayerIds?.length
+    ? [...decision.targetPlayerIds].sort().join(",")
+    : decision.targetPlayerId ?? "";
+  const guess = decision.guessedValue == null ? "" : String(decision.guessedValue);
+  return [decision.instanceId, targetPlayerIds, guess].join("|");
+}
+
+export function summarizeBotDecision(view: BotObservation, decision: BotPlayDecision): BotDecisionSummary {
+  const cardId = getDecisionCardId(view, decision);
+  const targetPlayerIds = decision.targetPlayerIds?.length
+    ? [...decision.targetPlayerIds]
+    : decision.targetPlayerId
+      ? [decision.targetPlayerId]
+      : [];
+  const categories = categorizeDecision(view, decision, cardId);
+  const cardLabel = cardId ?? "unknown-card";
+  const targetLabel = targetPlayerIds.length > 0 ? ` -> ${targetPlayerIds.join(",")}` : "";
+  const guessLabel = decision.guessedValue == null ? "" : ` guess=${decision.guessedValue}`;
+
+  return {
+    actionKey: encodeBotDecision(decision),
+    cardId,
+    targetPlayerIds,
+    guessedValue: decision.guessedValue ?? null,
+    categories,
+    summary: `${cardLabel}${targetLabel}${guessLabel}`.trim(),
+  };
+}
+
+function categorizeDecision(view: BotObservation, decision: BotPlayDecision, cardId: CardID | null): BotDecisionCategory[] {
+  const categories = new Set<BotDecisionCategory>();
+  const self = getSelfPlayer(view);
+  const targetPlayerIds = decision.targetPlayerIds?.length
+    ? decision.targetPlayerIds
+    : decision.targetPlayerId
+      ? [decision.targetPlayerId]
+      : [];
+  const targetPlayers = targetPlayerIds
+    .map((playerId) => view.players.find((player) => player.id === playerId) ?? null)
+    .filter((player): player is VisiblePlayer => Boolean(player));
+  const highestTokenCount = Math.max(0, ...view.players.filter((player) => player.id !== view.selfPlayerId).map((player) => player.tokens));
+
+  if (targetPlayerIds.length === 0) categories.add("no_target");
+  if (targetPlayerIds.some((playerId) => playerId === view.selfPlayerId)) categories.add("self_target");
+  if (targetPlayers.some((player) => player.tokens === highestTokenCount && highestTokenCount > 0)) categories.add("leader_pressure");
+
+  switch (cardId) {
+    case "guard":
+    case "bishop":
+      categories.add("guess");
+      break;
+    case "priest":
+    case "baroness":
+    case "cardinal":
+      categories.add("information");
+      break;
+    case "baron":
+    case "dowager_queen":
+      categories.add("compare");
+      break;
+    case "handmaid":
+      categories.add("protection");
+      break;
+    case "prince":
+      categories.add("force_discard");
+      break;
+    case "king":
+      categories.add("swap");
+      break;
+    case "sycophant":
+      categories.add("manipulation");
+      break;
+    case "jester":
+      categories.add("bet");
+      break;
+    case "countess":
+      if (self && self.hand.some((card) => card.cardId === "prince" || card.cardId === "king")) {
+        categories.add("forced_play");
+      }
+      break;
+    default:
+      break;
+  }
+
+  return [...categories];
+}
+
 export function chooseRandomBotPlay(view: BotObservation): BotPlayDecision | null {
   const candidates = listBotActionCandidates(view);
   return sample(candidates);
+}
+
+export function analyzeRandomBotPlay(view: BotObservation): RandomBotAnalysis {
+  const candidates = listBotActionCandidates(view);
+  const decision = sample(candidates);
+  return {
+    decision,
+    summary: decision ? summarizeBotDecision(view, decision) : null,
+    legalCandidateCount: candidates.length,
+    note: decision ? "Random bot sampled uniformly from the legal candidate list." : "No legal bot action was available.",
+  };
 }
 
 export function chooseRandomCardinalPeekTarget(view: BotObservation): PlayerID | null {

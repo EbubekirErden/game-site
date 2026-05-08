@@ -43,6 +43,8 @@ export function formatErrorReason(reason: string): string {
       return "Bots can only be added while the room is still in the lobby.";
     case "codex_bot_not_configured":
       return "Codex Bot is not configured on the server. Set CODEX_BOT_ENABLED=true and run codex login on the server.";
+    case "cannot_spectate_now":
+      return "That room cannot switch you into spectator mode right now.";
     case "game_already_started":
       return "That room already started, so new players cannot join right now.";
     case "game_not_available":

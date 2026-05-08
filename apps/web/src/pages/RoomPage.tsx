@@ -47,6 +47,7 @@ type RoomPageProps = {
   onSetMode: (mode: LoveLetterMode) => void;
   onAddBot: () => Promise<boolean>;
   onAddSmartBot: () => Promise<boolean>;
+  onAddHardBot: () => Promise<boolean>;
   onAddCodexBot: () => Promise<boolean>;
   codexBotStatus: CodexBotStatus | null;
   onStartRound: () => void;
@@ -56,6 +57,8 @@ type RoomPageProps = {
   onCardinalPeek: (targetPlayerId: string) => Promise<boolean>;
   chatMessages: RoomChatMessage[];
   onSendChatMessage: (text: string) => Promise<boolean>;
+  onBecomeSpectator: () => Promise<boolean>;
+  onBecomePlayer: () => Promise<boolean>;
   onLeaveRoom: () => void;
 };
 
@@ -82,6 +85,7 @@ export function RoomPage({
   onSetMode,
   onAddBot,
   onAddSmartBot,
+  onAddHardBot,
   onAddCodexBot,
   codexBotStatus,
   onStartRound,
@@ -91,6 +95,8 @@ export function RoomPage({
   onCardinalPeek,
   chatMessages,
   onSendChatMessage,
+  onBecomeSpectator,
+  onBecomePlayer,
   onLeaveRoom,
 }: RoomPageProps) {
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
@@ -106,8 +112,8 @@ export function RoomPage({
   const isCreator = state.creatorId === state.selfPlayerId;
   const codexBotReady = codexBotStatus?.configured === true;
   const codexBotHelp = codexBotReady
-    ? `Codex Bot is configured with ${codexBotStatus.model}.`
-    : "Codex Bot needs CODEX_BOT_ENABLED=true and a server-side `codex login`.";
+    ? ` Codex Bot is configured with ${codexBotStatus.model}.`
+    : " Codex Bot needs CODEX_BOT_ENABLED=true and a server-side `codex login`.";
   const selectedCard = self?.hand?.find((card) => card.instanceId === selectedInstanceId) ?? null;
   const selectedCardDef = selectedCard ? getCardDef(selectedCard.cardId) : null;
   const selfHandDefs = self?.hand?.map((card) => getCardDef(card.cardId)) ?? [];
@@ -499,6 +505,15 @@ export function RoomPage({
               {isMyTurn ? "Your Turn" : currentTurnName ? `${currentTurnName}'s Turn` : "Turn in progress"}
             </span>
           )}
+          {!selfSpectator ? (
+            <button type="button" className="secondary-button topbar-leave-button" onClick={() => void onBecomeSpectator()}>
+              Spectate
+            </button>
+          ) : showLobby ? (
+            <button type="button" className="secondary-button topbar-leave-button" onClick={() => void onBecomePlayer()}>
+              Join Game
+            </button>
+          ) : null}
           <button type="button" className="danger-button topbar-leave-button" onClick={onLeaveRoom}>Leave</button>
         </div>
       </header>
@@ -564,16 +579,22 @@ export function RoomPage({
             </section>
           )}
 
-          {showLobby && !selfSpectator && (
+          {showLobby && (
             <section className="game-panel slim-panel">
               <h3>Your Status</h3>
-              <button
-                type="button"
-                className={`primary-button full-width ${self?.isReady ? "is-ready-btn" : ""}`}
-                onClick={() => onToggleReady(!self?.isReady)}
-              >
-                {self?.isReady ? "Ready to Start!" : "Click when Ready"}
-              </button>
+              {selfSpectator ? (
+                <p className="muted-text" style={{ marginTop: 0 }}>
+                  You are currently watching only. Rejoin as a player if you want to ready up and take turns again.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className={`primary-button full-width ${self?.isReady ? "is-ready-btn" : ""}`}
+                  onClick={() => onToggleReady(!self?.isReady)}
+                >
+                  {self?.isReady ? "Ready to Start!" : "Click when Ready"}
+                </button>
+              )}
               
               {isCreator && (
                 <button type="button" className={`full-width mt-2 ${allReady ? "ready-start-btn" : "secondary-button"}`} onClick={onStartRound} disabled={!allReady}>
@@ -597,8 +618,8 @@ export function RoomPage({
                 {isCreator
                   ? "Choose the deck for this room before starting the round."
                   : selfSpectator
-                    ? "You can watch this match and will join the next lobby as a player."
-                  : `${playerNameById(state, state.creatorId)} can change the mode before the round starts.`}
+                    ? "You are watching only. Spectators stay out of ready checks and turn order."
+                    : `${playerNameById(state, state.creatorId)} can change the mode before the round starts.`}
               </p>
               <div className="mode-picker-options">
                 <button
@@ -625,13 +646,16 @@ export function RoomPage({
             <section className="game-panel slim-panel">
               <h3>Bots</h3>
               <p className="muted-text" style={{ marginTop: 0 }}>
-                Add a server-controlled player. {codexBotHelp}
+                Add a server-controlled player. Random bots move legally, smart bots use heuristics, and hard bots push those heuristics further.{codexBotHelp}
               </p>
               <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
                 Add Random Bot
               </button>
               <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddSmartBot()}>
                 Add Smart Bot
+              </button>
+              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddHardBot()}>
+                Add Hard Bot
               </button>
               <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddCodexBot()} disabled={!codexBotReady}>
                 Add Codex Bot
@@ -668,7 +692,7 @@ export function RoomPage({
               <p>
                 Need at least 2 players. Every player must be ready to start.
                 {state.mode === "premium" ? " Premium is intended for 5 to 8 people." : ""}
-                {state.spectators.length > 0 ? " Spectators will become players after a finished match returns here." : ""}
+                {state.spectators.length > 0 ? " Spectators can watch without being counted as players." : ""}
               </p>
               <div className="lobby-stats">
                 <div className="stat-box"><strong>{playerCount}</strong> <span>Players</span></div>
@@ -710,7 +734,7 @@ export function RoomPage({
 
                 <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "32px", justifyContent: "center", flexWrap: "wrap" }}>
                   {selfSpectator ? (
-                    <p className="muted-text">You are watching this match and can join when the host returns the room to lobby.</p>
+                    <p className="muted-text">You are watching this match and do not need to confirm ready.</p>
                   ) : (
                     <button
                       type="button"
@@ -752,7 +776,10 @@ export function RoomPage({
 
                 <div className="table-grid">
                   {state.players?.map((player) => (
-                    <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
+                    <div
+                      key={player.id}
+                      className={`table-zone ${player.status !== "active" ? "is-eliminated-zone" : ""}`}
+                    >
                       <div className="zone-nameplate">
                         {player.name} {player.id === state.selfPlayerId && "(You)"}
                         <span className="token-count">
@@ -803,7 +830,7 @@ export function RoomPage({
               </div>
 
               <p className="muted-text" style={{ marginTop: "24px" }}>
-                Return to the lobby to reset tokens, let players leave safely, and bring current spectators into the next game.
+                Return to the lobby to reset tokens and keep current spectators in watch-only mode.
               </p>
 
               <div className="round-actions" style={{ display: "flex", gap: "16px", marginTop: "24px", justifyContent: "center", flexWrap: "wrap" }}>
@@ -959,7 +986,10 @@ export function RoomPage({
                 
                 <div className="table-grid">
                   {state.players?.map((player) => (
-                    <div key={player.id} className={`table-zone ${player.id === state.selfPlayerId ? "is-self-zone" : ""}`}>
+                    <div
+                      key={player.id}
+                      className={`table-zone ${player.status !== "active" ? "is-eliminated-zone" : ""} ${state.phase === "in_round" && state.round?.currentPlayerId === player.id ? "is-current-turn" : ""}`}
+                    >
                       <div className="zone-nameplate">
                         {player.name} {player.id === state.selfPlayerId && "(You)"}
                         <span className="token-count">

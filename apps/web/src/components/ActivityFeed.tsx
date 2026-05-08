@@ -99,7 +99,7 @@ function describeEvent(event: GameEvent, state: PlayerViewState): {
         icon: <Eye size={16} strokeWidth={2.2} aria-hidden="true" />,
         detail: (
           <>
-            <PlayerChip playerId={event.spectatorId} state={state} /> joined as a spectator and can enter the next lobby.
+            <PlayerChip playerId={event.spectatorId} state={state} /> joined as a spectator and is only watching the room.
           </>
         ),
       };

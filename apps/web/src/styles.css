@@ -1668,7 +1668,25 @@ input::placeholder {
   background: rgba(31, 111, 235, 0.15);
 }
 
-.player-row.is-eliminated { opacity: 0.5; filter: grayscale(1); }
+.player-row.is-eliminated {
+  background: rgba(231, 76, 60, 0.12);
+  border-color: rgba(231, 76, 60, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(231, 76, 60, 0.08);
+}
+
+.player-row.is-eliminated .player-row-info,
+.player-row.is-eliminated .player-status-text {
+  color: #f3c2bd;
+}
+
+.player-row.is-eliminated .player-row-info strong {
+  color: #ffe3df;
+}
+
+.player-row.is-eliminated .status-inline,
+.player-row.is-eliminated .player-status-text svg {
+  color: #ffb4ac;
+}
 
 .player-row.is-spectator {
   background: rgba(76, 201, 240, 0.08);
@@ -1808,9 +1826,31 @@ input::placeholder {
   border: 1px solid #2a3543;
 }
 
-.table-zone.is-self-zone {
-  border-color: rgba(31, 111, 235, 0.4);
-  background: rgba(31, 111, 235, 0.05);
+.table-zone.is-current-turn {
+  border-color: rgba(255, 208, 112, 0.82);
+  background: rgba(255, 208, 112, 0.06);
+  box-shadow:
+    0 0 0 1px rgba(255, 208, 112, 0.22),
+    0 0 24px rgba(255, 208, 112, 0.14);
+}
+
+.table-zone.is-eliminated-zone {
+  background: rgba(231, 76, 60, 0.06);
+  border-color: rgba(231, 76, 60, 0.18);
+}
+
+.table-zone.is-eliminated-zone .zone-nameplate {
+  border-color: rgba(231, 76, 60, 0.16);
+  color: rgba(255, 227, 223, 0.92);
+}
+
+.table-zone.is-eliminated-zone .muted-text {
+  color: rgba(243, 194, 189, 0.8);
+}
+
+.table-zone.is-current-turn .zone-nameplate {
+  border-color: rgba(255, 208, 112, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(255, 208, 112, 0.1);
 }
 
 .zone-nameplate {
@@ -1844,6 +1884,16 @@ input::placeholder {
   flex-direction: row;
   padding-left: 5px; 
   min-height: 104px; 
+}
+
+.table-zone.is-current-turn .discard-fan {
+  padding: 10px 10px 10px 8px;
+  margin: 0 -2px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(255, 208, 112, 0.18), rgba(255, 208, 112, 0.05));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 208, 112, 0.22),
+    0 0 18px rgba(255, 208, 112, 0.08);
 }
 
 .fan-card {

@@ -1,4 +1,5 @@
 import React from "react";
+import { motion } from "framer-motion";
 import { getCardDef } from "@game-site/shared";
 import type { CardInstance } from "@game-site/shared";
 
@@ -51,7 +52,8 @@ export function CardView({
 
   if (hidden) {
     return (
-      <button
+      <motion.button
+        layoutId={card.instanceId}
         type="button"
         className={`card-view card-view-hidden ${sizeClassName}`}
         onClick={onClick}
@@ -59,12 +61,13 @@ export function CardView({
       >
         <div className="card-view-back-pattern" />
         <div className="card-view-hidden-crest">⚜️</div>
-      </button>
+      </motion.button>
     );
   }
 
   return (
-    <button
+    <motion.button
+      layoutId={card.instanceId}
       type="button"
       className={`card-view ${selected ? "is-selected" : ""} ${selectable ? "is-clickable" : ""} ${sizeClassName} ${spotlight ? "card-view-spotlight" : ""}`}
       onClick={onClick}
@@ -87,6 +90,6 @@ export function CardView({
       <div className="card-view-footer">
         <strong>{cardDef?.name ?? "Unknown"}</strong>
       </div>
-    </button>
+    </motion.button>
   );
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Check,
@@ -16,7 +17,7 @@ import {
 import { getCardDef } from "@game-site/shared";
 import type { CardID, GameEvent, LoveLetterMode, PlayerViewState, PrivateEffectPresentation } from "@game-site/shared";
 
-import { ActivityEventRow, ActivityFeed, shouldShowActivityEvent } from "../components/ActivityFeed.js";
+import { HistoryEventRow, HistoryTape, shouldShowActivityEvent } from "../components/HistoryTape.js";
 import { CardInfoPopup } from "../components/CardInfoPopup.js";
 import { CardView } from "../components/CardView.js";
 import { DiscardResolutionOverlay } from "../components/DiscardResolutionOverlay.js";
@@ -24,6 +25,7 @@ import { LoveLetterInfoDrawer } from "../components/LoveLetterInfoDrawer.js";
 import { RoomChat } from "../components/RoomChat.js";
 import type { RoomChatMessage } from "../app/App.js";
 import { cardNamesByValue, playerNameById } from "../lib/gamePresentation.js";
+import { Particles } from "../components/Particles.js";
 
 type RoomPageProps = {
   state: PlayerViewState;
@@ -461,13 +463,16 @@ export function RoomPage({
     onTargetPlayerIdsChange(trimmedNextIds);
   };
 
+  const isSpotlightActive = isMyTurn && targetNeeded;
+
   return (
-    <main className="table-layout">
+    <main className={`table-layout ${isSpotlightActive ? "is-spotlight-active" : ""}`}>
       {activeAnnouncement ? (
         <div className={`table-log-announcement is-${announcementPhase}`} aria-live="polite" aria-atomic="true">
-          <ActivityEventRow event={activeAnnouncement.event} state={state} className="log-item-announcement" />
+          <HistoryEventRow event={activeAnnouncement.event} state={state} className="log-item-announcement" />
         </div>
       ) : null}
+      <Particles active={showBetweenRounds || showMatchOver} type="confetti" count={80} />
       <header className="table-topbar">
         <div className="topbar-info">
           <h1>{gameTitle}</h1>
@@ -760,8 +765,15 @@ export function RoomPage({
                   {state.players?.map((player) => (
                     <div
                       key={player.id}
-                      className={`table-zone ${player.status !== "active" ? "is-eliminated-zone" : ""}`}
+                      className={`table-zone ${player.status !== "active" ? "is-eliminated-zone" : ""} ${selectableTargetIds.includes(player.id) ? "is-targetable" : ""}`}
+                      onClick={() => selectableTargetIds.includes(player.id) && handleTargetToggle(player.id)}
                     >
+                      {selectedTargetPlayerIds.includes(player.id) && (
+                        <div className="targeting-crosshair">
+                          <div className="crosshair-circle"></div>
+                          <div className="crosshair-dot"></div>
+                        </div>
+                      )}
                       <div className="zone-nameplate">
                         {player.name} {player.id === state.selfPlayerId && "(You)"}
                         <span className="token-count">
@@ -845,22 +857,41 @@ export function RoomPage({
                       <p className="muted-text">You can follow the public table, discards, turns, and log. Private hands stay hidden.</p>
                     ) : (
                       <div className="hand-cards-large">
-                        {self?.hand?.map((card) => (
-                          <div className="hand-card-wrapper" key={card.instanceId}>
-                            <CardView
-                              card={card}
-                              selectable
-                              selected={card.instanceId === selectedInstanceId}
-                              onClick={() => openCardInfo(card.cardId)}
-                              spotlight={card.instanceId === selectedInstanceId}
-                            />
-                            {isMyTurn ? (
-                              <button type="button" className="primary-button hand-card-discard-btn" onClick={() => void handleCardDiscardIntent(card.instanceId)}>
-                                Discard
-                              </button>
-                            ) : null}
-                          </div>
-                        ))}
+                        <AnimatePresence>
+                          {self?.hand?.map((card, index) => (
+                            <motion.div
+                              className="hand-card-wrapper"
+                              key={card.instanceId}
+                              layoutId={card.instanceId + "_wrapper"}
+                              initial={{ opacity: 0, x: 300, y: -300, scale: 0.2 }}
+                              animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: -50, scale: 0.8 }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 260,
+                                damping: 20,
+                                delay: index * 0.1,
+                              }}
+                            >
+                              <CardView
+                                card={card}
+                                selectable
+                                selected={card.instanceId === selectedInstanceId}
+                                onClick={() => openCardInfo(card.cardId)}
+                                spotlight={card.instanceId === selectedInstanceId}
+                              />
+                              {isMyTurn ? (
+                                <button 
+                                  type="button" 
+                                  className="primary-button hand-card-discard-btn" 
+                                  onClick={() => void handleCardDiscardIntent(card.instanceId)}
+                                >
+                                  Discard
+                                </button>
+                              ) : null}
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
                       </div>
                     )}
                   </div>
@@ -966,6 +997,14 @@ export function RoomPage({
                   <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
                 </div>
                 
+                {state.round?.deckCount ? (
+                  <div className="dynamic-deck-container">
+                    {Array.from({ length: Math.min(state.round.deckCount, 5) }).map((_, i) => (
+                      <div key={i} className="deck-card" style={{ transform: `translate(${i * -2}px, ${i * -2}px)` }} />
+                    ))}
+                  </div>
+                ) : null}
+                
                 <div className="table-grid">
                   {state.players?.map((player) => (
                     <div
@@ -984,11 +1023,18 @@ export function RoomPage({
                          <span className="muted-text" style={{fontSize: '0.85rem'}}>No discards</span>
                       ) : (
                         <div className="discard-fan">
-                          {player.discardPile?.map((card, index) => (
-                            <div className="fan-card" key={card.instanceId} style={{ zIndex: index }}>
-                              <CardView card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
-                            </div>
-                          ))}
+                          <AnimatePresence>
+                            {player.discardPile?.map((card, index) => (
+                              <motion.div 
+                                className="fan-card" 
+                                key={card.instanceId} 
+                                style={{ zIndex: index }}
+
+                              >
+                                <CardView card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
                         </div>
                       )}
                     </div>
@@ -1001,7 +1047,13 @@ export function RoomPage({
                     {(state.round?.visibleRemovedCards?.length ?? 0) > 0 ? (
                       <div className="discard-spread discard-spread-tight">
                         {state.round?.visibleRemovedCards?.map((card) => (
-                          <CardView key={card.instanceId} card={card} mini selectable onClick={() => openCardInfo(card.cardId)} />
+                          <CardView
+                            key={card.instanceId}
+                            card={card}
+                            mini
+                            selectable
+                            onClick={() => openCardInfo(card.cardId)}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -1021,7 +1073,7 @@ export function RoomPage({
         <aside className="table-sidebar table-right-sidebar">
           <section className="game-panel activity-panel">
             <h3>Activity Log</h3>
-            <ActivityFeed events={visibleLogEvents} state={state} />
+            <HistoryTape events={visibleLogEvents} state={state} />
           </section>
           <RoomChat messages={chatMessages} state={state} onSendMessage={onSendChatMessage} />
         </aside>

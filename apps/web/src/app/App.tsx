@@ -446,6 +446,29 @@ export function App() {
     });
   }
 
+  function handleAddHardBot(): Promise<boolean> {
+    if (!isLoveLetterState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit(
+        "room:add-hard-bot",
+        {
+          roomId: state.roomId,
+        },
+        (response: { ok: boolean; reason?: string }) => {
+          if (!response.ok) {
+            setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+            resolve(false);
+            return;
+          }
+
+          setMessage("Hard bot added to the room.");
+          resolve(true);
+        },
+      );
+    });
+  }
+
   function handlePlayCard(): Promise<boolean> {
     if (!isLoveLetterState(state)) return Promise.resolve(false);
 
@@ -682,6 +705,7 @@ export function App() {
                 onSetMode={handleSetMode}
                 onAddBot={handleAddBot}
                 onAddSmartBot={handleAddSmartBot}
+                onAddHardBot={handleAddHardBot}
                 onStartRound={handleStartRound}
                 onReturnToLobby={handleReturnToLobby}
                 onPlayCard={handlePlayCard}

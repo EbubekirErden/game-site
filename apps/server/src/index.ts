@@ -25,7 +25,7 @@ import {
 } from "@game-site/shared/games/skull-king/engine";
 import type { SkullKingGameState } from "@game-site/shared/games/skull-king/types";
 import { chooseRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
-import { chooseSmartBotPlay, chooseSmartCardinalPeekTarget, getSmartBotDisplayName } from "./smartBotBrain.js";
+import { chooseHardBotPlay, chooseHardCardinalPeekTarget, getHardBotDisplayName, chooseSmartBotPlay, chooseSmartCardinalPeekTarget, getSmartBotDisplayName } from "./smartBotBrain.js";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -43,7 +43,7 @@ type SkullKingRoomRecord = {
 };
 
 type RoomRecord = LoveLetterRoomRecord | SkullKingRoomRecord;
-type LoveLetterBotStrategy = "random" | "smart";
+type LoveLetterBotStrategy = "random" | "smart" | "hard";
 
 const rooms = new Map<string, RoomRecord>();
 const roomChats = new Map<string, ChatMessage[]>();
@@ -411,9 +411,12 @@ function runBotTurn(roomId: string): void {
   const cardinalActorId = room.state.round.pendingCardinalPeek?.actorPlayerId ?? null;
   if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
     const observation = toBotObservation(room.state, cardinalActorId, getBotMemory(roomId, cardinalActorId));
-    const targetPlayerId = getBotStrategy(roomId, cardinalActorId) === "smart"
+    const strategy = getBotStrategy(roomId, cardinalActorId);
+    const targetPlayerId = strategy === "smart"
       ? chooseSmartCardinalPeekTarget(observation)
-      : chooseRandomCardinalPeekTarget(observation);
+      : strategy === "hard"
+        ? chooseHardCardinalPeekTarget(observation)
+        : chooseRandomCardinalPeekTarget(observation);
     if (!targetPlayerId) return;
 
     const result = cardinalPeekAction(room.state, cardinalActorId, targetPlayerId);
@@ -429,9 +432,12 @@ function runBotTurn(roomId: string): void {
   if (!currentPlayerId || !isBotPlayer(roomId, currentPlayerId)) return;
 
   const observation = toBotObservation(room.state, currentPlayerId, getBotMemory(roomId, currentPlayerId));
-  const decision = getBotStrategy(roomId, currentPlayerId) === "smart"
+  const strategy = getBotStrategy(roomId, currentPlayerId);
+  const decision = strategy === "smart"
     ? chooseSmartBotPlay(observation)
-    : chooseRandomBotPlay(observation);
+    : strategy === "hard"
+      ? chooseHardBotPlay(observation)
+      : chooseRandomBotPlay(observation);
   if (!decision) return;
 
   const result = playCardAction(room.state, currentPlayerId, decision.instanceId, {
@@ -477,7 +483,7 @@ function addBot(room: LoveLetterRoomRecord, strategy: LoveLetterBotStrategy): Lo
     ...room.state.players.map((player) => player.name),
     ...room.state.spectators.map((spectator) => spectator.name),
   ];
-  const botName = strategy === "smart" ? getSmartBotDisplayName(existingNames) : getBotDisplayName(existingNames);
+  const botName = strategy === "smart" ? getSmartBotDisplayName(existingNames) : strategy === "hard" ? getHardBotDisplayName(existingNames) : getBotDisplayName(existingNames);
   const withBot = addPlayer(room.state, botPlayerId, botName);
   if (withBot === room.state) {
     return room.state;
@@ -493,6 +499,10 @@ function addRandomBot(room: LoveLetterRoomRecord): LoveLetterGameState {
 
 function addSmartBot(room: LoveLetterRoomRecord): LoveLetterGameState {
   return addBot(room, "smart");
+}
+
+function addHardBot(room: LoveLetterRoomRecord): LoveLetterGameState {
+  return addBot(room, "hard");
 }
 
 io.on("connection", (socket) => {
@@ -739,6 +749,35 @@ io.on("connection", (socket) => {
     }
 
     setRoomState(normalizedRoomId, room, addSmartBot(room));
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("room:add-hard-bot", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getLoveLetterRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    if (room.state.creatorId !== binding.playerId) {
+      respond?.({ ok: false, reason: "only_creator_can_manage_bots" });
+      return;
+    }
+
+    if (room.state.phase !== "lobby") {
+      respond?.({ ok: false, reason: "cannot_add_bot_now" });
+      return;
+    }
+
+    setRoomState(normalizedRoomId, room, addHardBot(room));
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
   });

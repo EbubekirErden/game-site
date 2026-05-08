@@ -40,6 +40,7 @@ type RoomPageProps = {
   onSetMode: (mode: LoveLetterMode) => void;
   onAddBot: () => Promise<boolean>;
   onAddSmartBot: () => Promise<boolean>;
+  onAddHardBot: () => Promise<boolean>;
   onStartRound: () => void;
   onReturnToLobby: () => void;
   onPlayCard: (instanceIdOverride?: string) => Promise<boolean>;
@@ -73,6 +74,7 @@ export function RoomPage({
   onSetMode,
   onAddBot,
   onAddSmartBot,
+  onAddHardBot,
   onStartRound,
   onReturnToLobby,
   onPlayCard,
@@ -610,13 +612,16 @@ export function RoomPage({
             <section className="game-panel slim-panel">
               <h3>Bots</h3>
               <p className="muted-text" style={{ marginTop: 0 }}>
-                Add a server-controlled player that makes fully random legal moves.
+                Add a server-controlled player. Random bots move legally, smart bots use heuristics, and hard bots push those heuristics further.
               </p>
               <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
                 Add Random Bot
               </button>
               <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddSmartBot()}>
                 Add Smart Bot
+              </button>
+              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddHardBot()}>
+                Add Hard Bot
               </button>
             </section>
           )}

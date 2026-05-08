@@ -25,6 +25,13 @@ import { RoomChat } from "../components/RoomChat.js";
 import type { RoomChatMessage } from "../app/App.js";
 import { cardNamesByValue, playerNameById } from "../lib/gamePresentation.js";
 
+type CodexBotStatus = {
+  enabled: boolean;
+  configured: boolean;
+  model: string;
+  reason?: string;
+};
+
 type RoomPageProps = {
   state: PlayerViewState;
   gameTitle: string;
@@ -40,6 +47,8 @@ type RoomPageProps = {
   onSetMode: (mode: LoveLetterMode) => void;
   onAddBot: () => Promise<boolean>;
   onAddSmartBot: () => Promise<boolean>;
+  onAddCodexBot: () => Promise<boolean>;
+  codexBotStatus: CodexBotStatus | null;
   onStartRound: () => void;
   onReturnToLobby: () => void;
   onPlayCard: (instanceIdOverride?: string) => Promise<boolean>;
@@ -73,6 +82,8 @@ export function RoomPage({
   onSetMode,
   onAddBot,
   onAddSmartBot,
+  onAddCodexBot,
+  codexBotStatus,
   onStartRound,
   onReturnToLobby,
   onPlayCard,
@@ -93,6 +104,10 @@ export function RoomPage({
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
   const selfSpectator = state.selfRole === "spectator";
   const isCreator = state.creatorId === state.selfPlayerId;
+  const codexBotReady = codexBotStatus?.configured === true;
+  const codexBotHelp = codexBotReady
+    ? `Codex Bot is configured with ${codexBotStatus.model}.`
+    : "Codex Bot needs CODEX_BOT_ENABLED=true and a server-side `codex login`.";
   const selectedCard = self?.hand?.find((card) => card.instanceId === selectedInstanceId) ?? null;
   const selectedCardDef = selectedCard ? getCardDef(selectedCard.cardId) : null;
   const selfHandDefs = self?.hand?.map((card) => getCardDef(card.cardId)) ?? [];
@@ -610,13 +625,16 @@ export function RoomPage({
             <section className="game-panel slim-panel">
               <h3>Bots</h3>
               <p className="muted-text" style={{ marginTop: 0 }}>
-                Add a server-controlled player that makes fully random legal moves.
+                Add a server-controlled player. {codexBotHelp}
               </p>
               <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
                 Add Random Bot
               </button>
               <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddSmartBot()}>
                 Add Smart Bot
+              </button>
+              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddCodexBot()} disabled={!codexBotReady}>
+                Add Codex Bot
               </button>
             </section>
           )}

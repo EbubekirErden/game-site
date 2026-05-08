@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev -w apps/server\" \"npm run dev -w apps/web\"",
     "typecheck": "tsc -b packages/shared apps/server apps/web",
-    "test": "npm run typecheck && node --test packages/shared/dist/games/**/*.test.js"
+    "test": "npm run typecheck && node --test packages/shared/dist/games/**/*.test.js && node --import tsx --test apps/server/src/**/*.test.ts"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",

@@ -25,6 +25,13 @@ type PersistedSession = {
 
 type AppGameState = LoveLetterPlayerViewState | SkullKingPlayerViewState;
 
+type CodexBotStatus = {
+  enabled: boolean;
+  configured: boolean;
+  model: string;
+  reason?: string;
+};
+
 export type RoomChatMessage = {
   id: string;
   roomId: string;
@@ -153,6 +160,7 @@ export function App() {
   const [state, setState] = React.useState<AppGameState | null>(null);
   const [pendingAction, setPendingAction] = React.useState<"create" | "join" | "watch" | null>(null);
   const [message, setMessage] = React.useState("Enter your name, then create or join a room.");
+  const [codexBotStatus, setCodexBotStatus] = React.useState<CodexBotStatus | null>(null);
   const [activeEffectPresentation, setActiveEffectPresentation] = React.useState<PrivateEffectPresentation | null>(null);
   const [chatMessages, setChatMessages] = React.useState<RoomChatMessage[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = React.useState<string | null>(null);
@@ -192,6 +200,12 @@ export function App() {
     );
   }, [location.pathname, navigate, playerName]);
 
+  const requestServerCapabilities = React.useCallback(() => {
+    socket.emit("server:capabilities", (payload: { codexBot?: CodexBotStatus }) => {
+      setCodexBotStatus(payload.codexBot ?? null);
+    });
+  }, []);
+
   React.useEffect(() => {
     writePersistedSession({
       playerId: playerIdRef.current,
@@ -226,6 +240,7 @@ export function App() {
     };
 
     const onConnect = () => {
+      requestServerCapabilities();
       if (savedRoomId && playerName.trim()) {
         attemptReconnect(savedRoomId);
         return;
@@ -283,7 +298,7 @@ export function App() {
       socket.off("connect_error", onConnectError);
       socket.off("disconnect", onDisconnect);
     };
-  }, [attemptReconnect, location.pathname, navigate, playerName, savedRoomId]);
+  }, [attemptReconnect, location.pathname, navigate, playerName, requestServerCapabilities, savedRoomId]);
 
   React.useEffect(() => {
     if (!socket.connected || !savedRoomId || state?.roomId === savedRoomId) return;
@@ -553,6 +568,30 @@ export function App() {
     });
   }
 
+
+  function handleAddCodexBot(): Promise<boolean> {
+    if (!isLoveLetterState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit(
+        "room:add-codex-bot",
+        {
+          roomId: state.roomId,
+        },
+        (response: { ok: boolean; reason?: string }) => {
+          if (!response.ok) {
+            setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+            resolve(false);
+            return;
+          }
+
+          setMessage("Codex bot added to the room.");
+          resolve(true);
+        },
+      );
+    });
+  }
+
   function handlePlayCard(): Promise<boolean> {
     if (!isLoveLetterState(state)) return Promise.resolve(false);
 
@@ -791,6 +830,8 @@ export function App() {
                 onAddBot={handleAddBot}
                 onAddSmartBot={handleAddSmartBot}
                 onAddHardBot={handleAddHardBot}
+                onAddCodexBot={handleAddCodexBot}
+                codexBotStatus={codexBotStatus}
                 onStartRound={handleStartRound}
                 onReturnToLobby={handleReturnToLobby}
                 onPlayCard={handlePlayCard}

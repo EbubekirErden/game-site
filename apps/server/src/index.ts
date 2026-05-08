@@ -27,6 +27,8 @@ import type { SkullKingGameState } from "@game-site/shared/games/skull-king/type
 import { analyzeRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
 import { analyzeHardBotPlay, chooseHardCardinalPeekTarget, getHardBotDisplayName, chooseSmartCardinalPeekTarget, analyzeSmartBotPlay, getSmartBotDisplayName } from "./smartBotBrain.js";
 import { logBotCardinalPeek, logHeuristicBotDecision, logRandomBotDecision } from "./botTelemetry.js";
+import { chooseCodexBotPlayWithReason, chooseCodexCardinalPeekTargetWithReason, getCodexBotDisplayName } from "./codexBotBrain.js";
+import { getCodexBotStatus } from "./codexClient.js";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -44,7 +46,7 @@ type SkullKingRoomRecord = {
 };
 
 type RoomRecord = LoveLetterRoomRecord | SkullKingRoomRecord;
-type LoveLetterBotStrategy = "random" | "smart" | "hard";
+type LoveLetterBotStrategy = "random" | "smart" | "hard" | "codex";
 
 const rooms = new Map<string, RoomRecord>();
 const roomChats = new Map<string, ChatMessage[]>();
@@ -55,6 +57,7 @@ const botPlayerIdsByRoomId = new Map<string, Set<string>>();
 const botStrategyByPlayerKey = new Map<string, LoveLetterBotStrategy>();
 const botMemoryByPlayerKey = new Map<string, BotMemorySnapshot>();
 const pendingBotActionByRoomId = new Map<string, NodeJS.Timeout>();
+const botActionInFlightByRoomId = new Set<string>();
 const DISCONNECT_GRACE_MS = 30_000;
 const MAX_CHAT_HISTORY = 80;
 const BOT_ACTION_DELAY_MS = 3_000;
@@ -141,6 +144,7 @@ function destroyRoom(roomId: string): void {
   }
 
   clearPendingBotAction(roomId);
+  botActionInFlightByRoomId.delete(roomId);
   botPlayerIdsByRoomId.delete(roomId);
   rooms.delete(roomId);
   roomChats.delete(roomId);
@@ -387,6 +391,29 @@ function emitChatHistory(roomId: string, playerId: string): void {
   io.to(getPlayerKey(roomId, playerId)).emit("chat:history", roomChats.get(roomId) ?? []);
 }
 
+function emitBotChatMessage(roomId: string, playerId: string, text: string): void {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  const playerName = getParticipantName(room, playerId);
+  if (!playerName) return;
+
+  const trimmedText = text.trim().replace(/\s+/g, " ").slice(0, 240);
+  if (!trimmedText) return;
+
+  const message: ChatMessage = {
+    id: `${Date.now()}-${playerId}-${randomBytes(4).toString("hex")}`,
+    roomId,
+    playerId,
+    playerName,
+    text: trimmedText,
+    createdAt: Date.now(),
+  };
+  const nextHistory = [...(roomChats.get(roomId) ?? []), message].slice(-MAX_CHAT_HISTORY);
+  roomChats.set(roomId, nextHistory);
+  io.to(roomId).emit("chat:message", message);
+}
+
 function ensureBotsReady(roomId: string): boolean {
   const room = getLoveLetterRoom(roomId);
   if (!room) return false;
@@ -406,68 +433,88 @@ function ensureBotsReady(roomId: string): boolean {
   return false;
 }
 
-function runBotTurn(roomId: string): void {
+async function runBotTurn(roomId: string): Promise<void> {
   pendingBotActionByRoomId.delete(roomId);
+  if (botActionInFlightByRoomId.has(roomId)) return;
 
-  const room = getLoveLetterRoom(roomId);
-  if (!room || room.state.phase !== "in_round" || !room.state.round) return;
+  botActionInFlightByRoomId.add(roomId);
+  try {
+    const room = getLoveLetterRoom(roomId);
+    if (!room || room.state.phase !== "in_round" || !room.state.round) return;
 
-  const cardinalActorId = room.state.round.pendingCardinalPeek?.actorPlayerId ?? null;
-  if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
-    const observation = toBotObservation(room.state, cardinalActorId, getBotMemory(roomId, cardinalActorId));
-    const strategy = getBotStrategy(roomId, cardinalActorId);
-    const targetPlayerId = strategy === "smart"
-      ? chooseSmartCardinalPeekTarget(observation)
+    const cardinalActorId = room.state.round.pendingCardinalPeek?.actorPlayerId ?? null;
+    if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
+      const observation = toBotObservation(room.state, cardinalActorId, getBotMemory(roomId, cardinalActorId));
+      const strategy = getBotStrategy(roomId, cardinalActorId);
+      const codexResult = strategy === "codex" ? await chooseCodexCardinalPeekTargetWithReason(observation) : null;
+      const targetPlayerId = codexResult?.targetPlayerId ?? (strategy === "smart"
+        ? chooseSmartCardinalPeekTarget(observation)
+        : strategy === "hard"
+          ? chooseHardCardinalPeekTarget(observation)
+          : strategy === "random"
+            ? chooseRandomCardinalPeekTarget(observation)
+            : null);
+      if (strategy === "random" || strategy === "smart" || strategy === "hard") {
+        logBotCardinalPeek(
+          roomId,
+          observation,
+          strategy,
+          targetPlayerId,
+          targetPlayerId ? ["peek_highest_value_or_most_threatening_target"] : ["no_pending_cardinal_target_available"],
+        );
+      }
+      if (!targetPlayerId) return;
+
+      const result = cardinalPeekAction(room.state, cardinalActorId, targetPlayerId);
+      if (!result.ok || !result.state) return;
+
+      setRoomState(roomId, room, result.state);
+      botActionInFlightByRoomId.delete(roomId);
+      emitRoomState(roomId);
+      emitPrivateEffects(roomId, result.privateEffects);
+      if (codexResult?.reason) {
+        emitBotChatMessage(roomId, cardinalActorId, codexResult.reason);
+      }
+      return;
+    }
+
+    const currentPlayerId = room.state.round.currentPlayerId;
+    if (!currentPlayerId || !isBotPlayer(roomId, currentPlayerId)) return;
+
+    const observation = toBotObservation(room.state, currentPlayerId, getBotMemory(roomId, currentPlayerId));
+    const strategy = getBotStrategy(roomId, currentPlayerId);
+    const codexResult = strategy === "codex" ? await chooseCodexBotPlayWithReason(observation) : null;
+    const heuristicAnalysis = strategy === "smart"
+      ? analyzeSmartBotPlay(observation)
       : strategy === "hard"
-        ? chooseHardCardinalPeekTarget(observation)
-        : chooseRandomCardinalPeekTarget(observation);
-    logBotCardinalPeek(
-      roomId,
-      observation,
-      strategy,
-      targetPlayerId,
-      targetPlayerId ? ["peek_highest_value_or_most_threatening_target"] : ["no_pending_cardinal_target_available"],
-    );
-    if (!targetPlayerId) return;
+        ? analyzeHardBotPlay(observation)
+        : null;
+    const randomAnalysis = strategy === "random" ? analyzeRandomBotPlay(observation) : null;
+    const decision = codexResult?.decision ?? heuristicAnalysis?.decision ?? randomAnalysis?.decision ?? null;
+    if (heuristicAnalysis) {
+      logHeuristicBotDecision(roomId, observation, heuristicAnalysis);
+    } else if (randomAnalysis) {
+      logRandomBotDecision(roomId, observation, randomAnalysis);
+    }
+    if (!decision) return;
 
-    const result = cardinalPeekAction(room.state, cardinalActorId, targetPlayerId);
+    const result = playCardAction(room.state, currentPlayerId, decision.instanceId, {
+      targetPlayerId: decision.targetPlayerId,
+      targetPlayerIds: decision.targetPlayerIds,
+      guessedValue: decision.guessedValue,
+    });
     if (!result.ok || !result.state) return;
 
     setRoomState(roomId, room, result.state);
+    botActionInFlightByRoomId.delete(roomId);
     emitRoomState(roomId);
     emitPrivateEffects(roomId, result.privateEffects);
-    return;
+    if (codexResult?.reason) {
+      emitBotChatMessage(roomId, currentPlayerId, codexResult.reason);
+    }
+  } finally {
+    botActionInFlightByRoomId.delete(roomId);
   }
-
-  const currentPlayerId = room.state.round.currentPlayerId;
-  if (!currentPlayerId || !isBotPlayer(roomId, currentPlayerId)) return;
-
-  const observation = toBotObservation(room.state, currentPlayerId, getBotMemory(roomId, currentPlayerId));
-  const strategy = getBotStrategy(roomId, currentPlayerId);
-  const heuristicAnalysis = strategy === "smart"
-    ? analyzeSmartBotPlay(observation)
-    : strategy === "hard"
-      ? analyzeHardBotPlay(observation)
-      : null;
-  const randomAnalysis = strategy === "random" ? analyzeRandomBotPlay(observation) : null;
-  const decision = heuristicAnalysis?.decision ?? randomAnalysis?.decision ?? null;
-  if (heuristicAnalysis) {
-    logHeuristicBotDecision(roomId, observation, heuristicAnalysis);
-  } else if (randomAnalysis) {
-    logRandomBotDecision(roomId, observation, randomAnalysis);
-  }
-  if (!decision) return;
-
-  const result = playCardAction(room.state, currentPlayerId, decision.instanceId, {
-    targetPlayerId: decision.targetPlayerId,
-    targetPlayerIds: decision.targetPlayerIds,
-    guessedValue: decision.guessedValue,
-  });
-  if (!result.ok || !result.state) return;
-
-  setRoomState(roomId, room, result.state);
-  emitRoomState(roomId);
-  emitPrivateEffects(roomId, result.privateEffects);
 }
 
 function scheduleBotAction(roomId: string): void {
@@ -484,6 +531,7 @@ function scheduleBotAction(roomId: string): void {
   }
 
   if (room.state.phase !== "in_round" || !room.state.round) return;
+  if (botActionInFlightByRoomId.has(roomId)) return;
 
   const actingBotId = room.state.round.pendingCardinalPeek?.actorPlayerId ?? room.state.round.currentPlayerId;
   if (!actingBotId || !isBotPlayer(roomId, actingBotId)) {
@@ -491,7 +539,7 @@ function scheduleBotAction(roomId: string): void {
   }
 
   const timeout = setTimeout(() => {
-    runBotTurn(roomId);
+    void runBotTurn(roomId);
   }, BOT_ACTION_DELAY_MS);
 
   pendingBotActionByRoomId.set(roomId, timeout);
@@ -503,7 +551,13 @@ function addBot(room: LoveLetterRoomRecord, strategy: LoveLetterBotStrategy): Lo
     ...room.state.players.map((player) => player.name),
     ...room.state.spectators.map((spectator) => spectator.name),
   ];
-  const botName = strategy === "smart" ? getSmartBotDisplayName(existingNames) : strategy === "hard" ? getHardBotDisplayName(existingNames) : getBotDisplayName(existingNames);
+    const botName = strategy === "codex"
+    ? getCodexBotDisplayName(existingNames)
+    : strategy === "smart"
+      ? getSmartBotDisplayName(existingNames)
+      : strategy === "hard"
+        ? getHardBotDisplayName(existingNames)
+        : getBotDisplayName(existingNames);
   const withBot = addPlayer(room.state, botPlayerId, botName);
   if (withBot === room.state) {
     return room.state;
@@ -525,7 +579,16 @@ function addHardBot(room: LoveLetterRoomRecord): LoveLetterGameState {
   return addBot(room, "hard");
 }
 
+function addCodexBot(room: LoveLetterRoomRecord): LoveLetterGameState {
+  return addBot(room, "codex");
+}
+
 io.on("connection", (socket) => {
+  socket.on("server:capabilities", async (respond?: (payload: { codexBot: Awaited<ReturnType<typeof getCodexBotStatus>> }) => void) => {
+    respond?.({ codexBot: await getCodexBotStatus() });
+  });
+
+
   socket.on("room:create", ({ name, playerId, mode, gameId }, respond?: (payload: { ok: boolean; roomId?: string; reason?: string }) => void) => {
     const roomId = generateRoomCode();
     const normalizedPlayerId = String(playerId ?? "").trim();
@@ -867,6 +930,41 @@ io.on("connection", (socket) => {
     }
 
     setRoomState(normalizedRoomId, room, addHardBot(room));
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("room:add-codex-bot", async ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const codexStatus = await getCodexBotStatus();
+    if (!codexStatus.configured) {
+      respond?.({ ok: false, reason: "codex_bot_not_configured" });
+      return;
+    }
+
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getLoveLetterRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    if (room.state.creatorId !== binding.playerId) {
+      respond?.({ ok: false, reason: "only_creator_can_manage_bots" });
+      return;
+    }
+
+    if (room.state.phase !== "lobby") {
+      respond?.({ ok: false, reason: "cannot_add_bot_now" });
+      return;
+    }
+
+    setRoomState(normalizedRoomId, room, addCodexBot(room));
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
   });

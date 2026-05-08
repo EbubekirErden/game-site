@@ -26,7 +26,7 @@ import {
 import type { SkullKingGameState } from "@game-site/shared/games/skull-king/types";
 import { chooseRandomBotPlay, chooseRandomCardinalPeekTarget, getBotDisplayName } from "./botBrain.js";
 import { chooseSmartBotPlay, chooseSmartCardinalPeekTarget, getSmartBotDisplayName } from "./smartBotBrain.js";
-import { chooseCodexBotPlay, chooseCodexCardinalPeekTarget, getCodexBotDisplayName } from "./codexBotBrain.js";
+import { chooseCodexBotPlayWithReason, chooseCodexCardinalPeekTargetWithReason, getCodexBotDisplayName } from "./codexBotBrain.js";
 import { getCodexBotStatus } from "./codexClient.js";
 
 const httpServer = createServer();
@@ -390,6 +390,29 @@ function emitChatHistory(roomId: string, playerId: string): void {
   io.to(getPlayerKey(roomId, playerId)).emit("chat:history", roomChats.get(roomId) ?? []);
 }
 
+function emitBotChatMessage(roomId: string, playerId: string, text: string): void {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  const playerName = getParticipantName(room, playerId);
+  if (!playerName) return;
+
+  const trimmedText = text.trim().replace(/\s+/g, " ").slice(0, 240);
+  if (!trimmedText) return;
+
+  const message: ChatMessage = {
+    id: `${Date.now()}-${playerId}-${randomBytes(4).toString("hex")}`,
+    roomId,
+    playerId,
+    playerName,
+    text: trimmedText,
+    createdAt: Date.now(),
+  };
+  const nextHistory = [...(roomChats.get(roomId) ?? []), message].slice(-MAX_CHAT_HISTORY);
+  roomChats.set(roomId, nextHistory);
+  io.to(roomId).emit("chat:message", message);
+}
+
 function ensureBotsReady(roomId: string): void {
   const room = getLoveLetterRoom(roomId);
   if (!room) return;
@@ -419,11 +442,12 @@ async function runBotTurn(roomId: string): Promise<void> {
     if (cardinalActorId && isBotPlayer(roomId, cardinalActorId)) {
       const observation = toBotObservation(room.state, cardinalActorId, getBotMemory(roomId, cardinalActorId));
       const strategy = getBotStrategy(roomId, cardinalActorId);
-      const targetPlayerId = strategy === "codex"
-        ? await chooseCodexCardinalPeekTarget(observation)
-        : strategy === "smart"
-          ? chooseSmartCardinalPeekTarget(observation)
-          : chooseRandomCardinalPeekTarget(observation);
+      const codexResult = strategy === "codex" ? await chooseCodexCardinalPeekTargetWithReason(observation) : null;
+      const targetPlayerId = codexResult?.targetPlayerId ?? (strategy === "smart"
+        ? chooseSmartCardinalPeekTarget(observation)
+        : strategy === "random"
+          ? chooseRandomCardinalPeekTarget(observation)
+          : null);
       if (!targetPlayerId) return;
 
       const result = cardinalPeekAction(room.state, cardinalActorId, targetPlayerId);
@@ -433,6 +457,9 @@ async function runBotTurn(roomId: string): Promise<void> {
       botActionInFlightByRoomId.delete(roomId);
       emitRoomState(roomId);
       emitPrivateEffects(roomId, result.privateEffects);
+      if (codexResult?.reason) {
+        emitBotChatMessage(roomId, cardinalActorId, codexResult.reason);
+      }
       return;
     }
 
@@ -441,11 +468,12 @@ async function runBotTurn(roomId: string): Promise<void> {
 
     const observation = toBotObservation(room.state, currentPlayerId, getBotMemory(roomId, currentPlayerId));
     const strategy = getBotStrategy(roomId, currentPlayerId);
-    const decision = strategy === "codex"
-      ? await chooseCodexBotPlay(observation)
-      : strategy === "smart"
-        ? chooseSmartBotPlay(observation)
-        : chooseRandomBotPlay(observation);
+    const codexResult = strategy === "codex" ? await chooseCodexBotPlayWithReason(observation) : null;
+    const decision = codexResult?.decision ?? (strategy === "smart"
+      ? chooseSmartBotPlay(observation)
+      : strategy === "random"
+        ? chooseRandomBotPlay(observation)
+        : null);
     if (!decision) return;
 
     const result = playCardAction(room.state, currentPlayerId, decision.instanceId, {
@@ -459,6 +487,9 @@ async function runBotTurn(roomId: string): Promise<void> {
     botActionInFlightByRoomId.delete(roomId);
     emitRoomState(roomId);
     emitPrivateEffects(roomId, result.privateEffects);
+    if (codexResult?.reason) {
+      emitBotChatMessage(roomId, currentPlayerId, codexResult.reason);
+    }
   } finally {
     botActionInFlightByRoomId.delete(roomId);
   }

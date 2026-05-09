@@ -2,6 +2,7 @@ import React from "react";
 
 export type CardZoneName =
   | "deck"
+  | `player:${string}:area`
   | `player:${string}:hand`
   | `player:${string}:discard`
   | "stage:played"

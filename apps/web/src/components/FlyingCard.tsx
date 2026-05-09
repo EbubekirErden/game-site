@@ -58,9 +58,10 @@ export function FlyingCard({
   const toX = toRect.left + toRect.width / 2;
   const toY = toRect.top + toRect.height / 2;
 
-  // Card dimensions - use target rect for size
-  const cardW = Math.max(toRect.width, 72);
-  const cardH = Math.max(toRect.height, 100);
+  // Clamp animated cards so a full hand zone still receives a single-card animation.
+  const targetWidth = Math.min(toRect.width, 90);
+  const cardW = Math.max(targetWidth, 72);
+  const cardH = Math.max((cardW * 7) / 5, 100);
 
   return (
     <motion.div

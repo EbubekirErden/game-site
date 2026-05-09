@@ -1,6 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Coins, Shield } from "lucide-react";
+import { Coins, Shield, TriangleAlert } from "lucide-react";
 import type { PlayerViewState } from "@game-site/shared";
 import { CardView } from "./CardView.js";
 
@@ -12,6 +12,7 @@ type PlayerSeatProps = {
   isCurrentTurn: boolean;
   isTargetable: boolean;
   isProtected: boolean;
+  isMarkedBySycophant?: boolean;
   isSelectedTarget: boolean;
   isEliminated: boolean;
   isSelf?: boolean;
@@ -26,6 +27,7 @@ export function PlayerSeat({
   isCurrentTurn,
   isTargetable,
   isProtected,
+  isMarkedBySycophant = false,
   isSelectedTarget,
   isEliminated,
   isSelf = false,
@@ -38,6 +40,7 @@ export function PlayerSeat({
     isCurrentTurn ? "is-current-turn" : "",
     isTargetable ? "is-targetable" : "",
     isProtected ? "is-protected" : "",
+    isMarkedBySycophant ? "is-marked-by-sycophant" : "",
     isSelectedTarget ? "is-selected-target" : "",
     isEliminated ? "is-eliminated" : "",
     isSelf ? "is-self-seat" : "",
@@ -65,9 +68,7 @@ export function PlayerSeat({
                 "0 0 0 0px rgba(200, 155, 60, 0)",
               ],
             }
-          : isSelectedTarget
-            ? { boxShadow: "0 0 0 3px rgba(200, 155, 60, 0.9)" }
-            : { boxShadow: "0 0 0 0px rgba(200, 155, 60, 0)" }
+          : { boxShadow: "0 0 0 0px rgba(200, 155, 60, 0)" }
       }
       transition={
         isTargetable && !isSelectedTarget
@@ -77,6 +78,12 @@ export function PlayerSeat({
     >
       {/* Turn indicator stripe */}
       {isCurrentTurn && <div className="seat-turn-stripe" />}
+      {(isProtected || isMarkedBySycophant) && (
+        <div className="seat-status-lights" aria-hidden="true">
+          {isProtected ? <span className="seat-status-glow is-protected" /> : null}
+          {isMarkedBySycophant ? <span className="seat-status-glow is-threatened" /> : null}
+        </div>
+      )}
 
       {/* Nameplate */}
       <div className="seat-nameplate">
@@ -92,6 +99,11 @@ export function PlayerSeat({
           {isProtected && (
             <span className="seat-protected-badge">
               <Shield size={12} strokeWidth={2.2} aria-hidden="true" />
+            </span>
+          )}
+          {isMarkedBySycophant && (
+            <span className="seat-sycophant-badge" title="Sycophant target">
+              <TriangleAlert size={12} strokeWidth={2.2} aria-hidden="true" />
             </span>
           )}
         </div>
@@ -171,10 +183,6 @@ export function PlayerSeat({
         </div>
       )}
 
-      {/* Target click ripple */}
-      {isSelectedTarget && (
-        <div className="seat-target-ring" aria-hidden="true" />
-      )}
     </motion.div>
   );
 }

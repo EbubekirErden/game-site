@@ -3517,7 +3517,6 @@ input::placeholder {
 .love-letter-room .player-seat.is-selected-target {
   border-color: rgba(239, 215, 171, 0.58);
   box-shadow:
-    inset 0 0 0 1px rgba(239, 215, 171, 0.18),
     0 0 0 2px rgba(222, 188, 130, 0.22),
     0 24px 40px rgba(0, 0, 0, 0.24);
 }
@@ -3703,12 +3702,7 @@ input::placeholder {
 }
 
 .love-letter-room .seat-target-ring {
-  position: absolute;
-  inset: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(241, 217, 178, 0.45);
-  box-shadow: inset 0 0 28px rgba(255, 232, 191, 0.08);
-  pointer-events: none;
+  display: none;
 }
 
 .love-letter-room .action-stage {
@@ -3847,6 +3841,25 @@ input::placeholder {
   border-color: rgba(230, 198, 145, 0.24);
   background: rgba(28, 39, 54, 0.94);
   color: #f1e1c0;
+}
+
+.love-letter-room .guess-wheel-label {
+  display: block;
+  text-align: center;
+}
+
+.love-letter-room .guess-wheel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px auto 0;
+}
+
+.love-letter-room .guess-chip {
+  width: 100%;
+  max-width: 112px;
 }
 
 .love-letter-room .guess-chip.is-selected {
@@ -4976,4 +4989,216 @@ input::placeholder {
   left: 12px;
   right: 12px;
   bottom: 10px;
+}
+
+/* --- LOVE LETTER INTERACTION / LAYOUT REFINEMENTS --- */
+.love-letter-room .table-right-sidebar {
+  display: grid;
+  gap: 14px;
+  align-self: stretch;
+}
+
+.love-letter-room .chat-panel,
+.table-layout.love-letter-room .chat-panel {
+  min-height: 540px;
+}
+
+.love-letter-room .table-workspace,
+.table-layout.love-letter-room .table-workspace {
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(300px, 360px);
+}
+
+.love-letter-room .room-floating-info-button {
+  left: 22px;
+  right: auto;
+  bottom: 22px;
+  width: 56px;
+  min-width: 56px;
+  padding: 0;
+  overflow: hidden;
+  justify-content: center;
+  transition: width 180ms ease, padding 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.love-letter-room .room-floating-info-button:hover,
+.love-letter-room .room-floating-info-button:focus-visible {
+  width: 148px;
+  padding: 0 18px;
+  justify-content: flex-start;
+}
+
+.love-letter-room .room-floating-info-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 180ms ease, opacity 140ms ease;
+}
+
+.love-letter-room .room-floating-info-button:hover .room-floating-info-label,
+.love-letter-room .room-floating-info-button:focus-visible .room-floating-info-label {
+  max-width: 80px;
+  opacity: 1;
+}
+
+.love-letter-room .opponent-rail,
+.table-layout.love-letter-room .opponent-rail {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.love-letter-room .player-seat,
+.table-layout.love-letter-room .player-seat {
+  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-areas:
+    "name name"
+    "hand discard";
+}
+
+.love-letter-room .seat-hand-block {
+  justify-items: start;
+}
+
+.love-letter-room .seat-discard-block {
+  justify-items: stretch;
+}
+
+.love-letter-room .seat-hand-panel {
+  width: 88px;
+  justify-content: center;
+}
+
+.love-letter-room .seat-discard-panel {
+  width: 100%;
+}
+
+.love-letter-room .seat-hand-zone {
+  justify-content: center;
+}
+
+.love-letter-room .seat-discard-zone {
+  justify-content: flex-start;
+}
+
+.love-letter-room .seat-status-lights {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 10px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.love-letter-room .seat-status-glow {
+  position: absolute;
+  width: 72%;
+  height: 22px;
+  border-radius: 999px;
+  filter: blur(16px);
+  opacity: 0.72;
+}
+
+.love-letter-room .seat-status-glow.is-protected {
+  background: rgba(87, 190, 228, 0.34);
+}
+
+.love-letter-room .seat-status-glow.is-threatened {
+  background: rgba(220, 95, 90, 0.34);
+}
+
+.love-letter-room .seat-sycophant-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(154, 51, 58, 0.16);
+  border: 1px solid rgba(225, 127, 122, 0.28);
+  color: #ffb8b0;
+}
+
+.love-letter-room .player-seat.is-marked-by-sycophant {
+  border-color: rgba(225, 127, 122, 0.3);
+  box-shadow:
+    inset 0 0 0 1px rgba(225, 127, 122, 0.08),
+    0 18px 34px rgba(0, 0, 0, 0.2);
+}
+
+.love-letter-room .action-stage-flow-layout {
+  width: min(100%, 900px);
+  display: grid;
+  gap: 22px;
+  align-items: start;
+}
+
+.love-letter-room .action-stage-flow-layout.has-guess-panel {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+}
+
+.love-letter-room .action-stage-card-area {
+  width: 100%;
+}
+
+.love-letter-room .action-stage-side-panel {
+  width: 100%;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(230, 198, 145, 0.16);
+  background: rgba(19, 28, 40, 0.88);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
+}
+
+.love-letter-room .action-stage-side-title {
+  margin-bottom: 10px;
+  color: #f2dfba;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.love-letter-room .action-stage-prompt {
+  margin-top: 4px;
+}
+
+.love-letter-room .action-stage-guess-area {
+  width: 100%;
+}
+
+.love-letter-room .effect-clash-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.love-letter-room .effect-clash-vs,
+.effect-clash-vs {
+  min-width: 56px;
+  min-height: 56px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  justify-self: center;
+}
+
+@media (max-width: 1280px) {
+  .love-letter-room .table-workspace,
+  .table-layout.love-letter-room .table-workspace {
+    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .love-letter-room .action-stage-flow-layout.has-guess-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .love-letter-room .room-floating-info-button,
+  .love-letter-room .room-floating-info-button:hover,
+  .love-letter-room .room-floating-info-button:focus-visible {
+    width: 56px;
+    padding: 0;
+  }
 }

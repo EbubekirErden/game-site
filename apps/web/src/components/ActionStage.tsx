@@ -349,6 +349,18 @@ export function ActionStage({
   const confirmSummary = cardDef
     ? `Play ${cardDef.name}${targetName ? ` on ${targetName}` : ""}${needsGuess && guessedValue ? ` guessing value ${guessedValue}` : ""}?`
     : null;
+  const showGuessPanel =
+    (playFlow.step === "choosing_guess" || playFlow.step === "confirming") &&
+    guessValues.length > 0 &&
+    hasSelectableTarget;
+  const targetPrompt =
+    playFlow.step === "choosing_target"
+      ? needsGuess
+        ? "Select a player by clicking their seat."
+        : "Select a player by clicking their seat."
+      : showGuessPanel
+        ? "Now choose a number on the right."
+        : null;
 
   const canConfirm =
     isMyTurn &&
@@ -412,64 +424,66 @@ export function ActionStage({
                 Back
               </button>
 
-              {/* Staged card */}
-              <div className="action-stage-card-area">
-                <div
-                  className={`action-stage-played-slot ${!stagedCard ? "is-empty" : ""}`}
-                  ref={playedSlotRef as React.RefCallback<HTMLDivElement>}
-                >
-                  {stagedCard && (
-                    <CardView
-                      card={stagedCard}
-                      spotlight
-                      selectable={false}
-                    />
+              <div className={`action-stage-flow-layout ${showGuessPanel ? "has-guess-panel" : ""}`}>
+                <div className="action-stage-card-area">
+                  <div
+                    className={`action-stage-played-slot ${!stagedCard ? "is-empty" : ""}`}
+                    ref={playedSlotRef as React.RefCallback<HTMLDivElement>}
+                  >
+                    {stagedCard && (
+                      <CardView
+                        card={stagedCard}
+                        spotlight
+                        selectable={false}
+                      />
+                    )}
+                  </div>
+
+                  {(mustPlayCountess || targetHintText) && (
+                    <div className="action-stage-card-name">
+                      {mustPlayCountess && (
+                        <p className="action-stage-error">
+                          You must play Countess — you're holding Prince or King.
+                        </p>
+                      )}
+                      {targetHintText && (
+                        <p className="action-stage-hint">{targetHintText}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {targetPrompt && (
+                    <motion.div
+                      className="action-stage-prompt"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25, delay: 0.1 }}
+                    >
+                      {targetPrompt}
+                    </motion.div>
                   )}
                 </div>
 
-                {cardDef && (
-                  <div className="action-stage-card-name">
-                    {cardDef.name}
-                    {mustPlayCountess && (
-                      <p className="action-stage-error">
-                        You must play Countess — you're holding Prince or King.
-                      </p>
-                    )}
-                    {targetHintText && (
-                      <p className="action-stage-hint">{targetHintText}</p>
-                    )}
-                  </div>
+                {showGuessPanel && (
+                  <motion.div
+                    className="action-stage-side-panel"
+                    ref={revealZoneRef as React.RefCallback<HTMLDivElement>}
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <div className="action-stage-side-title">Choose a value</div>
+                    <div className="action-stage-guess-area">
+                      <GuessWheel
+                        values={guessValues}
+                        selectedValue={guessedValue}
+                        onSelect={onGuessedValueChange}
+                        mode={mode}
+                      />
+                    </div>
+                  </motion.div>
                 )}
               </div>
-
-              {/* Status messages for choosing_target */}
-              {playFlow.step === "choosing_target" && (
-                <motion.div
-                  className="action-stage-prompt"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25, delay: 0.1 }}
-                >
-                  Select a player
-                </motion.div>
-              )}
-
-              {/* Guess wheel */}
-              {(playFlow.step === "choosing_guess" || playFlow.step === "confirming") &&
-                guessValues.length > 0 &&
-                hasSelectableTarget && (
-                  <div
-                    className="action-stage-guess-area"
-                    ref={revealZoneRef as React.RefCallback<HTMLDivElement>}
-                  >
-                    <GuessWheel
-                      values={guessValues}
-                      selectedValue={guessedValue}
-                      onSelect={onGuessedValueChange}
-                      mode={mode}
-                    />
-                  </div>
-                )}
 
               {/* Confirm prompt */}
               {playFlow.step === "confirming" && (

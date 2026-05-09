@@ -30,6 +30,7 @@ import { ActionStage } from "../components/ActionStage.js";
 import type { PlayFlowState } from "../components/ActionStage.js";
 import { FloatingCardLayer } from "../components/FloatingCardLayer.js";
 import type { FlyingCardAnimation } from "../components/FloatingCardLayer.js";
+import { MOTION } from "../lib/animationConstants.js";
 import { useCardZoneRegistry } from "../lib/useCardZoneRegistry.js";
 
 type RoomPageProps = {
@@ -68,6 +69,29 @@ type LogAnnouncement = {
 const LOG_ANNOUNCEMENT_HOLD_MS = 1800;
 const LOG_ANNOUNCEMENT_EXIT_MS = 550;
 
+function cardNeedsGuessSelection(cardId: CardID | null): boolean {
+  return cardId === "guard" || cardId === "bishop";
+}
+
+function cardNeedsSingleTargetSelection(cardId: CardID | null): boolean {
+  return [
+    "guard",
+    "bishop",
+    "priest",
+    "baron",
+    "handmaid",
+    "sycophant",
+    "prince",
+    "king",
+    "dowager_queen",
+    "jester",
+  ].includes(cardId ?? "");
+}
+
+function cardNeedsMultiTargetSelection(cardId: CardID | null): boolean {
+  return cardId === "baroness" || cardId === "cardinal";
+}
+
 export function RoomPage({
   state,
   gameTitle,
@@ -104,6 +128,7 @@ export function RoomPage({
   const [activeAnnouncement, setActiveAnnouncement] = React.useState<LogAnnouncement | null>(null);
   const [announcementPhase, setAnnouncementPhase] = React.useState<"enter" | "exit">("enter");
   const processedLogCountRef = React.useRef(state.log.length);
+  const processedAnimationLogCountRef = React.useRef(state.log.length);
 
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
   const selfSpectator = state.selfRole === "spectator";
@@ -133,20 +158,9 @@ export function RoomPage({
       : "error";
   const targetPlayerId = selectedTargetPlayerIds[0] ?? "";
   const cardId = selectedCardDef?.id ?? null;
-  const guessNeeded = cardId === "guard" || cardId === "bishop";
-  const singleTargetNeeded = [
-    "guard",
-    "bishop",
-    "priest",
-    "baron",
-    "handmaid",
-    "sycophant",
-    "prince",
-    "king",
-    "dowager_queen",
-    "jester",
-  ].includes(cardId ?? "");
-  const multiTargetNeeded = cardId === "baroness" || cardId === "cardinal";
+  const guessNeeded = cardNeedsGuessSelection(cardId);
+  const singleTargetNeeded = cardNeedsSingleTargetSelection(cardId);
+  const multiTargetNeeded = cardNeedsMultiTargetSelection(cardId);
   const targetNeeded = singleTargetNeeded || multiTargetNeeded;
   const forcedTargetPlayerId = state.round?.forcedTargetPlayerId ?? null;
   const guessValues = React.useMemo(() => {
@@ -168,8 +182,8 @@ export function RoomPage({
     return a.every((value, index) => value === b[index]);
   }, []);
 
-  const legalTargetSets = React.useMemo(() => {
-    if (!self || !cardId || !state.players) return [];
+  const buildLegalTargetSets = React.useCallback((nextCardId: CardID | null) => {
+    if (!self || !nextCardId || !state.players) return [];
 
     const targetableOthers = state.players
       .filter((player) => player.id !== self.id && player.status === "active" && !player.protectedUntilNextTurn)
@@ -189,7 +203,7 @@ export function RoomPage({
 
     let sets: string[][] = [];
 
-    switch (cardId) {
+    switch (nextCardId) {
       case "guard":
       case "bishop":
       case "priest":
@@ -215,12 +229,17 @@ export function RoomPage({
         break;
     }
 
-    if (forcedTargetPlayerId && cardId !== "sycophant") {
+    if (forcedTargetPlayerId && nextCardId !== "sycophant") {
       sets = sets.filter((targetSet) => targetSet.includes(forcedTargetPlayerId));
     }
 
     return sets;
-  }, [cardId, forcedTargetPlayerId, self, state.players]);
+  }, [forcedTargetPlayerId, self, state.players]);
+
+  const legalTargetSets = React.useMemo(
+    () => buildLegalTargetSets(cardId),
+    [buildLegalTargetSets, cardId],
+  );
 
   const selectableTargetIds = React.useMemo(
     () => [...new Set(legalTargetSets.flat())],
@@ -255,9 +274,11 @@ export function RoomPage({
 
   React.useEffect(() => {
     processedLogCountRef.current = state.log.length;
+    processedAnimationLogCountRef.current = state.log.length;
     setAnnouncementQueue([]);
     setActiveAnnouncement(null);
     setAnnouncementPhase("enter");
+    setFlyingCards([]);
   }, [state.roomId]);
 
   React.useEffect(() => {
@@ -287,6 +308,58 @@ export function RoomPage({
   }, [state.log]);
 
   React.useEffect(() => {
+    const processedCount = processedAnimationLogCountRef.current;
+    if (state.log.length < processedCount) {
+      processedAnimationLogCountRef.current = state.log.length;
+      setFlyingCards([]);
+      return;
+    }
+
+    if (state.log.length === processedCount) {
+      return;
+    }
+
+    const appendedEvents = state.log.slice(processedCount);
+    processedAnimationLogCountRef.current = state.log.length;
+
+    const drawAnimations = appendedEvents.reduce<FlyingCardAnimation[]>((animations, event, offset) => {
+      if (event.type !== "card_drawn") {
+        return animations;
+      }
+
+      const fromRect = getZoneRect("deck");
+      const toRect = getZoneRect(
+        event.playerId === state.selfPlayerId
+          ? `player:${event.playerId}:hand`
+          : `player:${event.playerId}:area`,
+      );
+
+      if (!fromRect || !toRect) {
+        return animations;
+      }
+
+      const animationId = `draw-${state.roomId}-${processedCount + offset}-${event.playerId}`;
+      animations.push({
+        id: animationId,
+        card: null,
+        fromRect,
+        toRect,
+        faceDown: true,
+        duration: MOTION.deal + 280,
+        delay: offset * 140,
+        onComplete: () => {
+          setFlyingCards((current) => current.filter((item) => item.id !== animationId));
+        },
+      } satisfies FlyingCardAnimation);
+      return animations;
+    }, []);
+
+    if (drawAnimations.length > 0) {
+      setFlyingCards((current) => [...current, ...drawAnimations]);
+    }
+  }, [getZoneRect, state.log, state.roomId, state.selfPlayerId]);
+
+  React.useEffect(() => {
     if (activeAnnouncement || announcementQueue.length === 0) {
       return;
     }
@@ -313,31 +386,6 @@ export function RoomPage({
       window.clearTimeout(completeTimeout);
     };
   }, [activeAnnouncement]);
-
-  const handleInitiatePlay = async () => {
-    if (targetNeeded || guessNeeded) {
-      if (targetNeeded) {
-        setPlayFlow({
-          step: "choosing_target",
-          cardInstanceId: selectedInstanceId!,
-          legalTargets: selectableTargetIds,
-        });
-      } else {
-        setPlayFlow({
-          step: "confirming",
-          cardInstanceId: selectedInstanceId!,
-          targetIds: selectedTargetPlayerIds,
-          guessedValue,
-        });
-      }
-      return;
-    }
-
-    const didPlay = await onPlayCard();
-    if (didPlay) {
-      setPlayFlow({ step: "idle" });
-    }
-  };
 
   const handleConfirmPlay = async () => {
     const didPlay = await onPlayCard();
@@ -381,18 +429,29 @@ export function RoomPage({
     }
 
     if (cardNeedsSetup(handCard.cardId)) {
-      if (targetNeeded) {
+      const nextGuessNeeded = cardNeedsGuessSelection(handCard.cardId);
+      const nextSingleTargetNeeded = cardNeedsSingleTargetSelection(handCard.cardId);
+      const nextMultiTargetNeeded = cardNeedsMultiTargetSelection(handCard.cardId);
+      const nextTargetNeeded = nextSingleTargetNeeded || nextMultiTargetNeeded;
+      const nextLegalTargetSets = buildLegalTargetSets(handCard.cardId);
+      const nextSelectableTargetIds = [...new Set(nextLegalTargetSets.flat())];
+
+      if (nextTargetNeeded) {
         setPlayFlow({
           step: "choosing_target",
           cardInstanceId: instanceId,
-          legalTargets: selectableTargetIds,
+          legalTargets: nextSelectableTargetIds,
+        });
+      } else if (nextGuessNeeded) {
+        setPlayFlow({
+          step: "choosing_guess",
+          cardInstanceId: instanceId,
+          targetId: "",
         });
       } else {
         setPlayFlow({
-          step: "confirming",
+          step: "staging_card",
           cardInstanceId: instanceId,
-          targetIds: selectedTargetPlayerIds,
-          guessedValue,
         });
       }
       return;
@@ -415,18 +474,6 @@ export function RoomPage({
         .filter((cardId): cardId is "count" | "constable" => cardId === "count" || cardId === "constable"),
     [self?.discardPile],
   );
-  const targetOptions = React.useMemo(
-    () =>
-      (state.players ?? [])
-        .filter((player) => selectableTargetIds.includes(player.id))
-        .map((player) => ({
-          player,
-          selectable: true,
-          protectedByHandmaid: player.id !== self?.id && player.protectedUntilNextTurn,
-        })),
-    [selectableTargetIds, self?.id, state.players],
-  );
-
   const hasSelectableTarget = legalTargetSets.length > 0;
   const activeOpponentsCount = state.players?.filter((player) => player.id !== self?.id && player.status === "active").length ?? 0;
   const canPlayWithoutTarget = Boolean(
@@ -449,6 +496,11 @@ export function RoomPage({
           ? "The current Sycophant choice makes this card fizzle, so it will be discarded without effect."
           : "All available opponents are protected by Handmaid, so this card will be played without effect."
       : null;
+  const inflightDrawCount = React.useMemo(
+    () => flyingCards.filter((animation) => animation.id.startsWith(`draw-${state.roomId}-`)).length,
+    [flyingCards, state.roomId],
+  );
+  const visibleDeckCount = Math.max(0, (state.round?.deckCount ?? 0) - inflightDrawCount);
 
   React.useEffect(() => {
     if (!targetNeeded) {
@@ -514,6 +566,18 @@ export function RoomPage({
       });
     }
   };
+
+  const handleGuessValueChange = React.useCallback((value: string) => {
+    onGuessedValueChange(value);
+    if (playFlow.step === "choosing_guess" && selectedInstanceId) {
+      setPlayFlow({
+        step: "confirming",
+        cardInstanceId: selectedInstanceId,
+        targetIds: selectedTargetPlayerIds,
+        guessedValue: value,
+      });
+    }
+  }, [onGuessedValueChange, playFlow.step, selectedInstanceId, selectedTargetPlayerIds]);
 
   const isSpotlightActive = isMyTurn && targetNeeded;
 
@@ -629,24 +693,6 @@ export function RoomPage({
             </section>
           )}
 
-          {showLobby && isCreator && (
-            <section className="game-panel slim-panel">
-              <h3>Bots</h3>
-              <p className="muted-text" style={{ marginTop: 0 }}>
-                Add a server-controlled player. Random bots move legally, smart bots use heuristics, and hard bots push those heuristics further.
-              </p>
-              <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
-                Add Random Bot
-              </button>
-              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddSmartBot()}>
-                Add Smart Bot
-              </button>
-              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddHardBot()}>
-                Add Hard Bot
-              </button>
-            </section>
-          )}
-
           {!showLobby && selfReminderCards.includes("constable") && (
             <section className="game-panel effect-reminder-panel">
               <h3>Constable</h3>
@@ -753,7 +799,7 @@ export function RoomPage({
               <div className="game-panel board-area">
                 <div className="board-header">
                   <h3>Previous Round Table</h3>
-                  <div className="deck-info">Deck: {state.round?.deckCount ?? 0} cards remaining</div>
+                  <div className="deck-info">Deck: {visibleDeckCount} cards remaining</div>
                 </div>
 
                 <div className="table-grid">
@@ -852,6 +898,7 @@ export function RoomPage({
                       isCurrentTurn={state.round?.currentPlayerId === player.id}
                       isTargetable={selectableTargetIds.includes(player.id)}
                       isProtected={player.id !== self?.id && player.protectedUntilNextTurn}
+                      isMarkedBySycophant={forcedTargetPlayerId === player.id}
                       isSelectedTarget={selectedTargetPlayerIds.includes(player.id)}
                       isEliminated={player.status !== "active"}
                       isSelf={false}
@@ -878,11 +925,11 @@ export function RoomPage({
                 isTargetSelectionValid={isTargetSelectionValid}
                 hasSelectableTarget={hasSelectableTarget}
                 activeEffectPresentation={activeEffectPresentation}
-                stageRef={registerZone("stage:played")}
+                playedSlotRef={registerZone("stage:played")}
                 revealZoneRef={registerZone("stage:reveal")}
                 clashLeftRef={registerZone("stage:clash-left")}
                 clashRightRef={registerZone("stage:clash-right")}
-                onGuessedValueChange={onGuessedValueChange}
+                onGuessedValueChange={handleGuessValueChange}
                 onConfirmPlay={handleConfirmPlay}
                 onCancelPlay={handleBackToHand}
                 onDismissEffect={onDismissEffect}
@@ -893,11 +940,11 @@ export function RoomPage({
                 <div className="rail-deck-zone">
                   <div className="board-header">
                     <h3>Deck</h3>
-                    <div className="deck-info">{state.round?.deckCount ?? 0} cards</div>
+                    <div className="deck-info">{visibleDeckCount} cards</div>
                   </div>
-                  {state.round?.deckCount ? (
+                  {visibleDeckCount ? (
                     <div className="dynamic-deck-container" ref={registerZone("deck")}>
-                      {Array.from({ length: Math.min(state.round.deckCount, 5) }).map((_, i) => (
+                      {Array.from({ length: Math.min(visibleDeckCount, 5) }).map((_, i) => (
                         <div key={i} className="deck-card" style={{ transform: `translate(${i * -2}px, ${i * -2}px)` }} />
                       ))}
                     </div>
@@ -991,6 +1038,23 @@ export function RoomPage({
         </section>
 
         <aside className="table-sidebar table-right-sidebar">
+          {showLobby && isCreator ? (
+            <section className="game-panel slim-panel">
+              <h3>Bots</h3>
+              <p className="muted-text" style={{ marginTop: 0 }}>
+                Add a server-controlled player. Random bots move legally, smart bots use heuristics, and hard bots push those heuristics further.
+              </p>
+              <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
+                Add Random Bot
+              </button>
+              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddSmartBot()}>
+                Add Smart Bot
+              </button>
+              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddHardBot()}>
+                Add Hard Bot
+              </button>
+            </section>
+          ) : null}
           <RoomChat messages={chatMessages} state={state} onSendMessage={onSendChatMessage} />
         </aside>
       </div>

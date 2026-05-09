@@ -460,6 +460,37 @@ export function ActionStage({
                       transition={{ duration: 0.25, delay: 0.1 }}
                     >
                       {targetPrompt}
+                      {/* Confirm prompt */}
+                      {playFlow.step === "confirming" && (
+                        <motion.div
+                          className="action-stage-confirm"
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }} 
+                        >
+                          {confirmSummary && (
+                            <p className="action-stage-confirm-text">{confirmSummary}</p>
+                          )}
+                          <div className="action-stage-confirm-buttons">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={onCancelPlay}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className="primary-button"
+                              disabled={!canConfirm}
+                              onClick={onConfirmPlay}
+                            >
+                              Play
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
                     </motion.div>
                   )}
                 </div>
@@ -485,37 +516,7 @@ export function ActionStage({
                 )}
               </div>
 
-              {/* Confirm prompt */}
-              {playFlow.step === "confirming" && (
-                <motion.div
-                  className="action-stage-confirm"
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  {confirmSummary && (
-                    <p className="action-stage-confirm-text">{confirmSummary}</p>
-                  )}
-                  <div className="action-stage-confirm-buttons">
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={onCancelPlay}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={!canConfirm}
-                      onClick={onConfirmPlay}
-                    >
-                      Play
-                    </button>
-                  </div>
-                </motion.div>
-              )}
+              
 
               {/* Direct play (no target needed) */}
               {playFlow.step === "staging_card" && canPlayWithoutTarget && (

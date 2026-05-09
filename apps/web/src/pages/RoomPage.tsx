@@ -130,11 +130,20 @@ export function RoomPage({
   const processedLogCountRef = React.useRef(state.log.length);
   const processedAnimationLogCountRef = React.useRef(state.log.length);
 
-  const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
+ const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
   const selfSpectator = state.selfRole === "spectator";
   const isCreator = state.creatorId === state.selfPlayerId;
   const selectedCard = self?.hand?.find((card) => card.instanceId === selectedInstanceId) ?? null;
   const selectedCardDef = selectedCard ? getCardDef(selectedCard.cardId) : null;
+
+  const stagedCardIsLifted = Boolean(
+    selectedInstanceId && playFlow.step !== "idle"
+  );
+
+  const visibleSelfHand = stagedCardIsLifted
+    ? (self?.hand ?? []).filter((card) => card.instanceId !== selectedInstanceId)
+    : (self?.hand ?? []);
+
   const selfHandDefs = self?.hand?.map((card) => getCardDef(card.cardId)) ?? [];
   const isMyTurn = Boolean(self && state.round?.currentPlayerId === self.id && state.phase === "in_round");
   const currentTurnName = state.round?.currentPlayerId ? playerNameById(state, state.round.currentPlayerId) : null;
@@ -972,7 +981,7 @@ export function RoomPage({
                   ) : (
                     <div className="hand-cards-large">
                       <AnimatePresence>
-                        {self?.hand?.map((card, index) => (
+                        {visibleSelfHand.map((card, index) => (
                           <motion.div
                             className="hand-card-wrapper"
                             key={card.instanceId}
@@ -999,7 +1008,11 @@ export function RoomPage({
                             <button
                               type="button"
                               className="hand-card-info-btn"
-                              onClick={() => openCardInfo(card.cardId)}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openCardInfo(card.cardId);
+                              }}
                               aria-label={`Open ${getCardDef(card.cardId)?.name ?? "card"} details`}
                             >
                               <Info size={16} strokeWidth={2.2} aria-hidden="true" />

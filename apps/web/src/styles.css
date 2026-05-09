@@ -3808,9 +3808,10 @@ input::placeholder {
 }
 
 .love-letter-room .action-stage-confirm-text {
-  color: #f5e8c8;
-  line-height: 1.45;
+  margin: 0 0 8px;
+  text-align: center;
 }
+
 
 .love-letter-room .action-stage-hint {
   color: #ecd6ac;
@@ -3826,40 +3827,54 @@ input::placeholder {
 }
 
 .love-letter-room .guess-wheel {
-  border-radius: 24px;
-  padding: 18px;
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+
+  border-radius: 20px;
+  padding: 12px;
   background:
     linear-gradient(180deg, rgba(18, 28, 41, 0.95), rgba(10, 17, 27, 0.98));
   border: 1px solid rgba(230, 198, 145, 0.16);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.16);
+}
+
+.love-letter-room .guess-wheel-label {
+  display: block;
+  margin: 0;
+  text-align: center;
+  font-size: 0.78rem;
+}
+
+.love-letter-room .guess-wheel-chips {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
 }
 
 .love-letter-room .guess-chip {
-  min-width: 84px;
-  padding: 10px 14px;
-  border-radius: 16px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 42px;
+  padding: 5px 6px;
+  border-radius: 14px;
   border-color: rgba(230, 198, 145, 0.24);
   background: rgba(28, 39, 54, 0.94);
   color: #f1e1c0;
 }
 
-.love-letter-room .guess-wheel-label {
-  display: block;
-  text-align: center;
+.love-letter-room .guess-chip-value {
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
-.love-letter-room .guess-wheel-chips {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  width: fit-content;
-  max-width: 100%;
-  margin: 12px auto 0;
-}
-
-.love-letter-room .guess-chip {
-  width: 100%;
-  max-width: 112px;
+.love-letter-room .guess-chip-name {
+  font-size: 0.66rem;
+  line-height: 1.05;
 }
 
 .love-letter-room .guess-chip.is-selected {
@@ -3868,19 +3883,21 @@ input::placeholder {
 }
 
 .love-letter-room .action-stage-confirm {
-  padding: 16px 18px;
-  border-radius: 22px;
-  background: rgba(16, 12, 16, 0.3);
-  border: 1px solid rgba(230, 198, 145, 0.16);
-  text-align: center;
+  width: min(100%, 420px);
+  margin-top: 6px;
+  padding: 10px 12px;
 }
 
 .love-letter-room .action-stage-confirm-buttons {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
-  margin-top: 14px;
+}
+
+.love-letter-room .action-stage-confirm-buttons .primary-button,
+.love-letter-room .action-stage-confirm-buttons .secondary-button {
+  min-width: 96px;
 }
 
 .love-letter-room .action-stage-resolving {
@@ -4064,15 +4081,14 @@ input::placeholder {
 }
 
 .love-letter-room .hand-card-wrapper {
-  gap: 12px;
-  padding-bottom: 66px;
+  position: relative;
 }
 
 .love-letter-room .hand-card-info-btn {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 4;
+  z-index: 20;
   width: 36px;
   height: 36px;
   border-radius: 12px;
@@ -4085,6 +4101,7 @@ input::placeholder {
   opacity: 0;
   transform: translateY(-6px);
   transition: opacity 160ms ease, transform 160ms ease, border-color 160ms ease;
+  pointer-events: auto;
 }
 
 .love-letter-room .hand-card-wrapper:hover .hand-card-info-btn,
@@ -4169,11 +4186,43 @@ input::placeholder {
     0 0 0 3px rgba(237, 202, 143, 0.16);
 }
 
-.love-letter-room .card-info-popup,
-.love-letter-room .info-drawer {
+.love-letter-room .card-info-popup {
   border-color: rgba(165, 117, 68, 0.18);
   background:
     linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(244, 235, 221, 0.99));
+}
+
+.love-letter-room .info-drawer {
+  border-color: rgba(218, 181, 122, 0.22);
+  background:
+    linear-gradient(180deg, rgba(24, 18, 30, 0.98), rgba(12, 10, 15, 0.99));
+  color: var(--ll-ink);
+}
+
+.love-letter-room .info-drawer h2,
+.love-letter-room .info-drawer h3,
+.love-letter-room .info-drawer strong {
+  color: var(--ll-gold-soft);
+}
+
+.love-letter-room .info-drawer p,
+.love-letter-room .info-drawer li,
+.love-letter-room .info-drawer span {
+  color: var(--ll-ink);
+}
+
+.love-letter-room .info-drawer .info-muted {
+  color: var(--ll-muted);
+}
+
+.love-letter-room .info-drawer-header {
+  border-bottom-color: rgba(218, 181, 122, 0.18);
+}
+
+.love-letter-room .info-close-button {
+  background: rgba(45, 34, 52, 0.95);
+  color: var(--ll-ink);
+  border-color: rgba(218, 181, 122, 0.2);
 }
 
 .love-letter-room .status-banner-panel {
@@ -4214,8 +4263,8 @@ input::placeholder {
   }
 
   .love-letter-room .action-stage {
-    min-height: 360px;
-    padding: 22px 16px 24px;
+    min-height: 0;
+    padding: 12px;
   }
 
   .love-letter-room .hand-cards-large {
@@ -4800,10 +4849,11 @@ input::placeholder {
   border-left: 1px dashed rgba(0, 0, 0, 0.1);
 }
 
-/* --- LOVE LETTER FINAL LAYOUT OVERRIDES --- */
 .table-layout.love-letter-room {
-  min-height: 100vh;
-  padding: 12px;
+  height: 100dvh;
+  min-height: 0;
+  padding: 8px 10px;
+  overflow: hidden;
   background:
     radial-gradient(circle at top, rgba(170, 121, 53, 0.16), transparent 22%),
     radial-gradient(circle at 50% 32%, rgba(132, 45, 62, 0.14), transparent 28%),
@@ -4820,9 +4870,10 @@ input::placeholder {
 }
 
 .table-layout.love-letter-room .table-topbar {
-  margin: 6px 10px 0;
-  padding: 12px 18px;
-  border-radius: 20px;
+  flex: 0 0 auto;
+  margin: 4px 8px 0;
+  padding: 8px 14px;
+  border-radius: 18px;
 }
 
 .table-layout.love-letter-room .topbar-info h1 {
@@ -4830,20 +4881,26 @@ input::placeholder {
 }
 
 .table-layout.love-letter-room .table-workspace {
-  grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(220px, 250px);
-  gap: 14px;
-  padding: 14px 10px 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  align-items: stretch;
+  grid-template-columns: minmax(200px, 230px) minmax(0, 1fr) minmax(240px, 300px);
+  gap: 10px;
+  padding: 10px 8px 8px;
   background: transparent;
 }
 
 .table-layout.love-letter-room .table-sidebar,
 .table-layout.love-letter-room .table-center {
-  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+  gap: 10px;
 }
 
 .table-layout.love-letter-room .game-panel,
 .table-layout.love-letter-room .love-letter-table {
-  padding: 14px;
+  padding: 10px;
 }
 
 .table-layout.love-letter-room .activity-panel,
@@ -4935,9 +4992,11 @@ input::placeholder {
 }
 
 .table-layout.love-letter-room .action-stage {
-  min-height: 300px;
-  padding: 18px 18px 20px;
-  border-radius: 24px;
+  min-height: 260px;
+  height: 100%;
+  padding: 12px 14px 14px;
+  border-radius: 22px;
+  overflow: visible;
 }
 
 .table-layout.love-letter-room .action-stage::before {
@@ -4946,8 +5005,8 @@ input::placeholder {
 }
 
 .table-layout.love-letter-room .action-stage-played-slot {
-  width: 148px;
-  height: 226px;
+  width: 132px;
+  height: 204px;
 }
 
 .table-layout.love-letter-room .action-stage-empty-hint,
@@ -4958,23 +5017,33 @@ input::placeholder {
 }
 
 .table-layout.love-letter-room .self-player-rail {
-  grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) minmax(150px, 180px);
-  gap: 14px;
-  margin-top: 14px;
+  grid-template-columns: minmax(130px, 160px) minmax(0, 1fr) minmax(130px, 160px);
+  gap: 10px;
+  margin-top: 8px;
+  min-height: 0;
 }
 
 .table-layout.love-letter-room .rail-deck-zone,
 .table-layout.love-letter-room .rail-hand-zone,
 .table-layout.love-letter-room .rail-discard-zone {
-  min-height: 188px;
-  padding: 12px 14px;
-  border-radius: 18px;
+  min-height: 190px;
+  padding: 8px 10px;
+  border-radius: 16px;
+}
+
+.table-layout.love-letter-room .rail-deck-zone,
+.table-layout.love-letter-room .rail-discard-zone {
+  overflow: hidden;
+}
+
+.table-layout.love-letter-room .rail-hand-zone {
+  overflow: visible;
 }
 
 .table-layout.love-letter-room .dynamic-deck-container {
-  width: 88px;
-  height: 126px;
-  margin: 6px auto 10px;
+  width: 72px;
+  height: 104px;
+  margin: 2px auto 6px;
 }
 
 .table-layout.love-letter-room .hand-cards-large {
@@ -4982,16 +5051,48 @@ input::placeholder {
 }
 
 .table-layout.love-letter-room .hand-card-wrapper {
-  padding-bottom: 58px;
+  padding-bottom: 0;
+  gap: 10px;
+  overflow: visible;
 }
 
 .table-layout.love-letter-room .hand-card-discard-btn {
-  left: 12px;
-  right: 12px;
-  bottom: 10px;
+  position: static;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  margin-top: 2px;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  line-height: 1.1;
+  box-shadow: 0 8px 20px rgba(31, 111, 235, 0.26);
 }
 
-/* --- LOVE LETTER INTERACTION / LAYOUT REFINEMENTS --- */
+.table-layout.love-letter-room .hand-card-wrapper:hover .hand-card-discard-btn,
+.table-layout.love-letter-room .hand-card-wrapper:focus-within .hand-card-discard-btn {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.table-layout.love-letter-room .hand-cards-large {
+  gap: 16px;
+  margin-top: 8px;
+  align-items: start;
+}
+
+.table-layout.love-letter-room .action-stage-back-button,
+.table-layout.love-letter-room .back-button {
+  margin-bottom: 4px;
+  position: relative;
+  z-index: 2;
+}
+
 .love-letter-room .table-right-sidebar {
   display: grid;
   gap: 14px;
@@ -5000,12 +5101,25 @@ input::placeholder {
 
 .love-letter-room .chat-panel,
 .table-layout.love-letter-room .chat-panel {
-  min-height: 540px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.table-layout.love-letter-room .activity-panel {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.table-layout.love-letter-room .history-tape,
+.table-layout.love-letter-room .history-tape-scroll {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .love-letter-room .table-workspace,
 .table-layout.love-letter-room .table-workspace {
-  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(200px, 230px) minmax(0, 1fr) minmax(240px, 300px);
 }
 
 .love-letter-room .room-floating-info-button {
@@ -5044,6 +5158,14 @@ input::placeholder {
 .love-letter-room .opponent-rail,
 .table-layout.love-letter-room .opponent-rail {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.table-layout.love-letter-room .love-letter-table {
+  min-height: 0;
+  overflow: visible;
+  display: grid;
+  grid-template-rows: minmax(110px, 0.56fr) minmax(280px, 1.18fr) minmax(210px, 0.96fr);
+  gap: 8px;
 }
 
 .love-letter-room .player-seat,
@@ -5128,29 +5250,41 @@ input::placeholder {
 .love-letter-room .action-stage-flow-layout {
   width: min(100%, 900px);
   display: grid;
-  gap: 22px;
-  align-items: start;
+  gap: 14px;
+  align-items: center;
+  min-height: 0;
 }
 
 .love-letter-room .action-stage-flow-layout.has-guess-panel {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
 }
 
 .love-letter-room .action-stage-card-area {
   width: 100%;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
 }
 
 .love-letter-room .action-stage-side-panel {
   width: 100%;
-  padding: 16px;
+  min-height: 0;
+  padding: 12px 14px;
   border-radius: 22px;
   border: 1px solid rgba(230, 198, 145, 0.16);
   background: rgba(19, 28, 40, 0.88);
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-self: center;
+  gap: 8px;
 }
 
 .love-letter-room .action-stage-side-title {
-  margin-bottom: 10px;
+  margin: 0;
   color: #f2dfba;
   font-size: 0.82rem;
   font-weight: 800;
@@ -5160,11 +5294,14 @@ input::placeholder {
 }
 
 .love-letter-room .action-stage-prompt {
-  margin-top: 4px;
+  margin-top: 2px;
+  text-align: center;
 }
 
 .love-letter-room .action-stage-guess-area {
   width: 100%;
+  display: grid;
+  place-items: center;
 }
 
 .love-letter-room .effect-clash-zone {
@@ -5181,6 +5318,21 @@ input::placeholder {
   place-items: center;
   align-self: center;
   justify-self: center;
+}
+
+.table-layout.love-letter-room .rail-hand-zone .card-view {
+  width: 102px;
+  height: 160px;
+}
+
+.table-layout.love-letter-room .action-stage-played-slot .card-view {
+  width: 132px;
+  height: 204px;
+}
+
+.table-layout.love-letter-room .rail-hand-zone .card-view-footer strong,
+.table-layout.love-letter-room .action-stage-played-slot .card-view-footer strong {
+  font-size: 0.72rem;
 }
 
 @media (max-width: 1280px) {

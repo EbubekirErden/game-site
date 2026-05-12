@@ -41,6 +41,7 @@ type RoomPageProps = {
   onAddBot: () => Promise<boolean>;
   onAddSmartBot: () => Promise<boolean>;
   onAddHardBot: () => Promise<boolean>;
+  onAddRlBot: () => Promise<boolean>;
   onStartRound: () => void;
   onReturnToLobby: () => void;
   onPlayCard: (instanceIdOverride?: string) => Promise<boolean>;
@@ -56,10 +57,11 @@ type RoomPageProps = {
 type LogAnnouncement = {
   key: string;
   event: GameEvent;
+  phase: "enter" | "exit";
 };
 
-const LOG_ANNOUNCEMENT_HOLD_MS = 1800;
-const LOG_ANNOUNCEMENT_EXIT_MS = 550;
+const LOG_ANNOUNCEMENT_HOLD_MS = 1500;
+const LOG_ANNOUNCEMENT_EXIT_MS = 360;
 
 export function RoomPage({
   state,
@@ -77,6 +79,7 @@ export function RoomPage({
   onAddBot,
   onAddSmartBot,
   onAddHardBot,
+  onAddRlBot,
   onStartRound,
   onReturnToLobby,
   onPlayCard,
@@ -91,10 +94,9 @@ export function RoomPage({
   const [playStage, setPlayStage] = React.useState<"select_card" | "setup_action">("select_card");
   const [copied, setCopied] = React.useState(false); // Copy button state
   const [infoCardId, setInfoCardId] = React.useState<CardID | null>(null);
-  const [announcementQueue, setAnnouncementQueue] = React.useState<LogAnnouncement[]>([]);
-  const [activeAnnouncement, setActiveAnnouncement] = React.useState<LogAnnouncement | null>(null);
-  const [announcementPhase, setAnnouncementPhase] = React.useState<"enter" | "exit">("enter");
+  const [activeAnnouncements, setActiveAnnouncements] = React.useState<LogAnnouncement[]>([]);
   const processedLogCountRef = React.useRef(state.log.length);
+  const announcementTimeoutsRef = React.useRef(new Map<string, number[]>());
 
   const self = state.players?.find((player) => player.id === state.selfPlayerId) ?? null;
   const selfSpectator = state.selfRole === "spectator";
@@ -151,6 +153,42 @@ export function RoomPage({
 
     return [];
   }, [cardId, state.mode]);
+
+  const clearAnnouncementTimers = React.useCallback((key?: string) => {
+    const entries = key
+      ? ([[key, announcementTimeoutsRef.current.get(key) ?? []]] as Array<[string, number[]]>)
+      : [...announcementTimeoutsRef.current.entries()];
+
+    for (const [entryKey, timeouts] of entries) {
+      for (const timeout of timeouts) {
+        window.clearTimeout(timeout);
+      }
+      announcementTimeoutsRef.current.delete(entryKey);
+    }
+  }, []);
+
+  const scheduleAnnouncementRemoval = React.useCallback((key: string) => {
+    if (announcementTimeoutsRef.current.has(key)) return;
+
+    const exitTimeout = window.setTimeout(() => {
+      setActiveAnnouncements((current) =>
+        current.map((candidate) =>
+          candidate.key === key ? { ...candidate, phase: "exit" } : candidate,
+        ),
+      );
+    }, LOG_ANNOUNCEMENT_HOLD_MS);
+
+    const completeTimeout = window.setTimeout(() => {
+      setActiveAnnouncements((current) => current.filter((candidate) => candidate.key !== key));
+      clearAnnouncementTimers(key);
+    }, LOG_ANNOUNCEMENT_HOLD_MS + LOG_ANNOUNCEMENT_EXIT_MS);
+
+    announcementTimeoutsRef.current.set(key, [exitTimeout, completeTimeout]);
+  }, [clearAnnouncementTimers]);
+
+  React.useEffect(() => {
+    return () => clearAnnouncementTimers();
+  }, [clearAnnouncementTimers]);
 
   const sameTargetSet = React.useCallback((left: string[], right: string[]) => {
     if (left.length !== right.length) return false;
@@ -246,18 +284,16 @@ export function RoomPage({
 
   React.useEffect(() => {
     processedLogCountRef.current = state.log.length;
-    setAnnouncementQueue([]);
-    setActiveAnnouncement(null);
-    setAnnouncementPhase("enter");
-  }, [state.roomId]);
+    clearAnnouncementTimers();
+    setActiveAnnouncements([]);
+  }, [clearAnnouncementTimers, state.roomId]);
 
   React.useEffect(() => {
     const processedCount = processedLogCountRef.current;
     if (state.log.length < processedCount) {
       processedLogCountRef.current = state.log.length;
-      setAnnouncementQueue([]);
-      setActiveAnnouncement(null);
-      setAnnouncementPhase("enter");
+      clearAnnouncementTimers();
+      setActiveAnnouncements([]);
       return;
     }
 
@@ -270,40 +306,16 @@ export function RoomPage({
       .map((event, offset) => ({
         key: `${processedCount + offset}-${event.type}`,
         event,
+        phase: "enter" as const,
       }))
       .filter(({ event }) => shouldShowActivityEvent(event));
 
     processedLogCountRef.current = state.log.length;
-    setAnnouncementQueue((current) => [...current, ...appendedEvents]);
-  }, [state.log]);
-
-  React.useEffect(() => {
-    if (activeAnnouncement || announcementQueue.length === 0) {
-      return;
+    setActiveAnnouncements((current) => [...current, ...appendedEvents]);
+    for (const announcement of appendedEvents) {
+      scheduleAnnouncementRemoval(announcement.key);
     }
-
-    setActiveAnnouncement(announcementQueue[0] ?? null);
-    setAnnouncementQueue((current) => current.slice(1));
-    setAnnouncementPhase("enter");
-  }, [activeAnnouncement, announcementQueue]);
-
-  React.useEffect(() => {
-    if (!activeAnnouncement) return;
-
-    const exitTimeout = window.setTimeout(() => {
-      setAnnouncementPhase("exit");
-    }, LOG_ANNOUNCEMENT_HOLD_MS);
-
-    const completeTimeout = window.setTimeout(() => {
-      setActiveAnnouncement(null);
-      setAnnouncementPhase("enter");
-    }, LOG_ANNOUNCEMENT_HOLD_MS + LOG_ANNOUNCEMENT_EXIT_MS);
-
-    return () => {
-      window.clearTimeout(exitTimeout);
-      window.clearTimeout(completeTimeout);
-    };
-  }, [activeAnnouncement]);
+  }, [clearAnnouncementTimers, scheduleAnnouncementRemoval, state.log]);
 
   const handleInitiatePlay = async () => {
     if (targetNeeded || guessNeeded) {
@@ -463,11 +475,17 @@ export function RoomPage({
 
   return (
     <main className="table-layout">
-      {activeAnnouncement ? (
-        <div className={`table-log-announcement is-${announcementPhase}`} aria-live="polite" aria-atomic="true">
-          <ActivityEventRow event={activeAnnouncement.event} state={state} className="log-item-announcement" />
+      {activeAnnouncements.map((announcement, index) => (
+        <div
+          key={announcement.key}
+          className={`table-log-announcement is-${announcement.phase}`}
+          style={{ "--announcement-index": index } as React.CSSProperties}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <ActivityEventRow event={announcement.event} state={state} className="log-item-announcement" />
         </div>
-      ) : null}
+      ))}
       <header className="table-topbar">
         <div className="topbar-info">
           <h1>{gameTitle}</h1>
@@ -631,7 +649,7 @@ export function RoomPage({
             <section className="game-panel slim-panel">
               <h3>Bots</h3>
               <p className="muted-text" style={{ marginTop: 0 }}>
-                Add a server-controlled player. Random bots move legally, smart bots use heuristics, and hard bots push those heuristics further.
+                Add a server-controlled player. Random bots move legally, smart bots use heuristics, hard bots push those heuristics further, and the RL bot uses the trained model.
               </p>
               <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()}>
                 Add Random Bot
@@ -641,6 +659,9 @@ export function RoomPage({
               </button>
               <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddHardBot()}>
                 Add Hard Bot
+              </button>
+              <button type="button" className="secondary-button full-width mt-2" onClick={() => void onAddRlBot()}>
+                Add normal game rl bot
               </button>
             </section>
           )}

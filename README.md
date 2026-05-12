@@ -31,6 +31,22 @@ Install dependencies from the repository root:
 npm install
 ```
 
+If you want to use the Love Letter RL bot (`normal game rl bot`), you also need Python and the RL model dependencies. From the sibling `RL` folder:
+
+```bash
+cd ../RL
+python -m venv venv
+```
+
+Activate the virtual environment and install the Python packages:
+
+```bash
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+The server will try to use `../RL/venv/Scripts/python.exe` by default for the RL bot predictor. If your Python lives somewhere else, set `RL_BOT_PYTHON` before starting the app.
+
 Start the development servers:
 
 ```bash
@@ -38,6 +54,14 @@ npm run dev
 ```
 
 This runs the server and web app together.
+
+On Windows PowerShell, `npm.ps1` may be blocked by execution policy. If that happens, use:
+
+```bash
+npm.cmd run dev
+```
+
+After the app is running, open the Love Letter lobby and use the `Add normal game rl bot` button to add the trained RL bot.
 
 ## Available Scripts
 
@@ -57,3 +81,4 @@ From the repository root:
 
 - The browser app restores the last selected game, name, and room from local storage.
 - Love Letter and Skull King each have their own room pages and rules helpers in the UI.
+- The RL bot model is loaded from `models/masked_ppo_love_letter_agent.zip`.

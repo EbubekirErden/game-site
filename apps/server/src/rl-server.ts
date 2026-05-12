@@ -6,14 +6,18 @@ app.use(express.json());
 
 const env = new LoveLetterRLEnv();
 
+app.get('/spec', (req, res) => {
+  res.json(env.getSpec());
+});
+
 app.post('/reset', (req, res) => {
-  const result = env.reset();
+  const result = env.reset(req.body ?? {});
   res.json(result);
 });
 
 app.post('/step', (req, res) => {
-  const { actionIndex } = req.body;
-  const result = env.step(actionIndex);
+  const { action, actionIndex } = req.body;
+  const result = env.step(Number.isInteger(action) ? action : actionIndex);
   res.json(result);
 });
 

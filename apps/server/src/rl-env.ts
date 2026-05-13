@@ -7,7 +7,7 @@ import {
   startRound,
   toBotObservation,
 } from "@game-site/shared/games/love-letter/engine";
-import { getCardCopies } from "@game-site/shared/games/love-letter/cards";
+import { getCardCopies, getCardDef } from "@game-site/shared/games/love-letter/cards";
 import { chooseRandomBotPlay, chooseRandomCardinalPeekTarget, listBotActionCandidates } from "./botBrain.js";
 import { chooseHardBotPlay, chooseHardCardinalPeekTarget, chooseSmartBotPlay, chooseSmartCardinalPeekTarget } from "./smartBotBrain.js";
 import type { BotPlayDecision } from "./botBrain.js";
@@ -76,12 +76,14 @@ type RLActionTemplate =
 type ResetOptions = {
   mode?: LoveLetterMode;
   botCount?: number;
+  botStrategies?: BotStrategy[] | string;
+  botStrategyPool?: BotStrategy[] | string;
 };
 
 const TARGET_SLOTS: TargetSlot[] = ["self", "opp0", "opp1", "opp2"];
 const OPPONENT_SLOTS: TargetSlot[] = ["opp0", "opp1", "opp2"];
 const GUESS_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-const OBSERVATION_SIZE = 190;
+const OBSERVATION_SIZE = 228;
 
 const ACTION_TEMPLATES: RLActionTemplate[] = buildActionTemplates();
 
@@ -221,6 +223,33 @@ function describeAction(template: RLActionTemplate): string {
   return `play:${template.cardId}:${targets}${guess}`;
 }
 
+function getWinningTokenCount(mode: LoveLetterMode, playerCount: number): number {
+  if (mode === "premium") return 4;
+  if (playerCount <= 2) return 7;
+  if (playerCount === 3) return 5;
+  return 4;
+}
+
+function getCardValue(cardId: CardID): number {
+  return getCardDef(cardId).value;
+}
+
+function normalizeBotStrategy(value: unknown): BotStrategy | null {
+  return value === "random" || value === "smart" || value === "hard" ? value : null;
+}
+
+function parseBotStrategies(value: ResetOptions["botStrategies"]): BotStrategy[] {
+  const raw =
+    typeof value === "string"
+      ? value.split(/[;,]/)
+      : Array.isArray(value)
+        ? value
+        : [];
+  return raw
+    .map((entry) => normalizeBotStrategy(String(entry).trim().toLowerCase()))
+    .filter((entry): entry is BotStrategy => Boolean(entry));
+}
+
 export class LoveLetterRLEnv {
   public readonly observationSize = OBSERVATION_SIZE;
   public readonly actionSpaceSize = ACTION_TEMPLATES.length;
@@ -249,15 +278,22 @@ export class LoveLetterRLEnv {
     this.memoryByPlayerId.clear();
     this.memoryByPlayerId.set(this.agentId, emptyMemory());
 
+    const requestedStrategies = parseBotStrategies(options.botStrategies);
+    const strategyPool = parseBotStrategies(options.botStrategyPool);
+    const availableStrategies: BotStrategy[] = strategyPool.length > 0 ? strategyPool : ["random", "smart", "hard"];
     this.currentBotCount =
       typeof options.botCount === "number" && Number.isInteger(options.botCount)
         ? Math.min(3, Math.max(1, options.botCount))
+        : requestedStrategies.length > 0
+          ? Math.min(3, Math.max(1, requestedStrategies.length))
         : Math.floor(Math.random() * 3) + 1;
-    const availableStrategies: BotStrategy[] = ["random", "smart", "hard"];
 
     for (let index = 1; index <= this.currentBotCount; index += 1) {
       const botId = `bot-${index}`;
-      const strategy = availableStrategies[Math.floor(Math.random() * availableStrategies.length)]!;
+      const strategy =
+        requestedStrategies.length > 0
+          ? requestedStrategies[(index - 1) % requestedStrategies.length]!
+          : availableStrategies[Math.floor(Math.random() * availableStrategies.length)]!;
       this.botStrategies.set(botId, strategy);
       this.memoryByPlayerId.set(botId, emptyMemory());
 
@@ -279,6 +315,12 @@ export class LoveLetterRLEnv {
     const beforeAgentActive = beforeAgent?.status === "active";
     const beforeAgentTokens = beforeAgent?.tokens ?? 0;
     const beforeOpponentsActive = this.state.players.filter((player) => player.id !== this.agentId && player.status === "active").length;
+    const tokenTarget = getWinningTokenCount(this.state.mode, this.state.players.length);
+    const beforeOpponentPressure = new Map(
+      this.state.players
+        .filter((player) => player.id !== this.agentId)
+        .map((player) => [player.id, player.tokens / tokenTarget]),
+    );
 
     if (!action) {
       return this.invalidActionResponse(actionId, "unknown_action");
@@ -300,6 +342,9 @@ export class LoveLetterRLEnv {
     const afterAgentActive = afterAgentBeforeAdvance?.status === "active";
     const afterAgentTokens = afterAgentBeforeAdvance?.tokens ?? 0;
     const afterOpponentsActive = this.state.players.filter((player) => player.id !== this.agentId && player.status === "active").length;
+    const eliminatedOpponentPressure = this.state.players
+      .filter((player) => player.id !== this.agentId && player.status !== "active")
+      .reduce((total, player) => total + (beforeOpponentPressure.get(player.id) ?? 0), 0);
     this.advanceToPlayableAgentState();
 
     const done = this.state.phase === "match_over";
@@ -307,8 +352,9 @@ export class LoveLetterRLEnv {
 
     if (!done) {
       reward += Math.max(0, beforeOpponentsActive - afterOpponentsActive) * 0.15;
-      reward += Math.max(0, afterAgentTokens - beforeAgentTokens) * 0.25;
-      if (roundEnded) reward += agentWonRound ? 0.5 : -0.2;
+      reward += eliminatedOpponentPressure * 0.08;
+      reward += Math.max(0, afterAgentTokens - beforeAgentTokens) * 0.35;
+      if (roundEnded) reward += agentWonRound ? 0.75 : -0.3;
       if (beforeAgentActive && !afterAgentActive) reward -= 0.25;
     } else {
       reward += this.state.matchWinnerIds.includes(this.agentId) ? 5.0 : -5.0;
@@ -529,6 +575,85 @@ export class LoveLetterRLEnv {
     }
   }
 
+  private getLiveKnownHandFact(memory: BotMemorySnapshot, playerId: PlayerID): BotObservedCardFact | null {
+    const newestHandFact = memory.observedCardFacts
+      .filter((fact) => fact.playerId === playerId && fact.location === "hand" && fact.card)
+      .sort((left, right) => right.turnNumber - left.turnNumber)[0];
+    if (!newestHandFact?.card) return null;
+
+    const discardedLater = memory.observedCardFacts.some((fact) => {
+      if (fact.playerId !== playerId || fact.location !== "discard" || !fact.card) return false;
+      if (fact.turnNumber <= newestHandFact.turnNumber) return false;
+      return fact.card.instanceId === newestHandFact.card?.instanceId || fact.card.cardId === newestHandFact.card?.cardId;
+    });
+
+    return discardedLater ? null : newestHandFact;
+  }
+
+  private getTurnDistance(view: ReturnType<typeof toBotObservation>, targetPlayerId: PlayerID): number {
+    const currentPlayerId = view.round?.currentPlayerId ?? null;
+    if (!currentPlayerId) return 0;
+
+    const players = view.players;
+    const currentIndex = players.findIndex((player) => player.id === currentPlayerId);
+    if (currentIndex < 0) return 0;
+
+    for (let offset = 0; offset < players.length; offset += 1) {
+      const candidate = players[(currentIndex + offset) % players.length];
+      if (candidate?.id === targetPlayerId) return offset / Math.max(1, players.length - 1);
+    }
+
+    return 0;
+  }
+
+  private pushVisibleBeliefState(vector: number[], view: ReturnType<typeof toBotObservation>): void {
+    const visibleCards: CardInstance[] = [];
+    const seenInstanceIds = new Set<string>();
+    const pushVisibleCards = (cards: CardInstance[] = []) => {
+      for (const card of cards) {
+        if (seenInstanceIds.has(card.instanceId)) continue;
+        seenInstanceIds.add(card.instanceId);
+        visibleCards.push(card);
+      }
+    };
+
+    const self = view.players.find((player) => player.id === this.agentId);
+    pushVisibleCards(self?.hand ?? []);
+    for (const player of view.players) {
+      pushVisibleCards(player.discardPile);
+    }
+    pushVisibleCards(view.round?.visibleRemovedCards ?? []);
+
+    for (const opponent of view.players.filter((player) => player.id !== this.agentId)) {
+      const knownFact = this.getLiveKnownHandFact(view.memory, opponent.id);
+      if (knownFact?.card) pushVisibleCards([knownFact.card]);
+    }
+
+    const remainingByCard = new Map<CardID, number>();
+    for (const cardId of CARD_TYPES) {
+      remainingByCard.set(cardId, getCardCopies(cardId, view.mode));
+    }
+    for (const card of visibleCards) {
+      remainingByCard.set(card.cardId, Math.max(0, (remainingByCard.get(card.cardId) ?? 0) - 1));
+    }
+
+    let remainingTotal = 0;
+    for (const cardId of CARD_TYPES) {
+      const remaining = remainingByCard.get(cardId) ?? 0;
+      remainingTotal += remaining;
+      vector.push(remaining / Math.max(1, getCardCopies(cardId, view.mode)));
+    }
+
+    for (const value of GUESS_VALUES) {
+      const remainingForValue = CARD_TYPES
+        .filter((cardId) => getCardValue(cardId) === value)
+        .reduce((total, cardId) => total + (remainingByCard.get(cardId) ?? 0), 0);
+      vector.push(remainingTotal > 0 ? remainingForValue / remainingTotal : 0);
+    }
+
+    vector.push(remainingTotal / 24.0);
+  }
+
   private getObservationVector(): number[] {
     if (this.state.phase !== "in_round" || !this.state.round) {
       return Array(OBSERVATION_SIZE).fill(0);
@@ -545,6 +670,7 @@ export class LoveLetterRLEnv {
     vector.push((obs.round?.deckCount ?? 0) / 24.0);
     vector.push(Math.min(1.0, (obs.round?.turnNumber ?? 0) / 32.0));
     vector.push(obs.players.filter((player) => player.status === "active").length / 4.0);
+    vector.push(getWinningTokenCount(obs.mode, obs.players.length) / 7.0);
 
     for (const slot of TARGET_SLOTS) {
       vector.push(this.resolveTargetSlot(slot, obs) === forcedTargetPlayerId ? 1.0 : 0.0);
@@ -563,11 +689,12 @@ export class LoveLetterRLEnv {
     this.pushCardCounts(vector, self?.discardPile ?? [], obs.mode, 1);
 
     this.pushCardCounts(vector, obs.round?.visibleRemovedCards ?? [], obs.mode, 1);
+    this.pushVisibleBeliefState(vector, obs);
 
     for (let index = 0; index < 3; index += 1) {
       const opponent = opponents[index];
       if (!opponent) {
-        vector.push(...Array(41).fill(0));
+        vector.push(...Array(44).fill(0));
         continue;
       }
 
@@ -578,6 +705,10 @@ export class LoveLetterRLEnv {
       vector.push(opponent.handCount / 2.0);
       vector.push(opponent.id === forcedTargetPlayerId ? 1.0 : 0.0);
       vector.push(pendingCardinalTargets.includes(opponent.id) ? 1.0 : 0.0);
+      vector.push(this.getTurnDistance(obs, opponent.id));
+      vector.push(Math.max(0, opponent.tokens - (self?.tokens ?? 0)) / 7.0);
+      const knownHandFact = this.getLiveKnownHandFact(obs.memory, opponent.id);
+      vector.push(knownHandFact ? Math.min(1.0, ((obs.round?.turnNumber ?? 0) - knownHandFact.turnNumber) / 32.0) : 0.0);
       this.pushCardCounts(vector, opponent.discardPile, obs.mode, 1);
       this.pushKnownHand(vector, obs.memory, opponent.id);
     }
@@ -598,16 +729,7 @@ export class LoveLetterRLEnv {
   }
 
   private pushKnownHand(vector: number[], memory: BotMemorySnapshot, playerId: PlayerID): void {
-    const newestHandFact = memory.observedCardFacts
-      .filter((fact) => fact.playerId === playerId && fact.location === "hand" && fact.card)
-      .sort((left, right) => right.turnNumber - left.turnNumber)[0];
-    const cardId = newestHandFact?.card?.cardId ?? null;
-    const discardedLater =
-      cardId &&
-      memory.observedCardFacts.some(
-        (fact) => fact.playerId === playerId && fact.location === "discard" && fact.card?.cardId === cardId && fact.turnNumber > (newestHandFact?.turnNumber ?? 0),
-      );
-    const knownCardId = discardedLater ? null : cardId;
+    const knownCardId = this.getLiveKnownHandFact(memory, playerId)?.card?.cardId ?? null;
 
     for (const candidateCardId of CARD_TYPES) {
       vector.push(candidateCardId === knownCardId ? 1.0 : 0.0);

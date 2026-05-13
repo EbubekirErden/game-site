@@ -22,6 +22,11 @@ def main() -> None:
         raise SystemExit(f"RL model not found: {model_path}")
 
     model = MaskablePPO.load(model_path, device="cpu")
+    deterministic = os.getenv("RL_BOT_DETERMINISTIC", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
 
     for line in sys.stdin:
         try:
@@ -30,7 +35,7 @@ def main() -> None:
             action_mask = np.asarray(payload["actionMask"], dtype=bool)
             action, _states = model.predict(
                 obs,
-                deterministic=True,
+                deterministic=deterministic,
                 action_masks=action_mask,
             )
             print(json.dumps({"ok": True, "action": int(action)}), flush=True)

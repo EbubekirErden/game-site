@@ -1,5 +1,5 @@
 import React from "react";
-import { Anchor, Check, ChevronLeft, ChevronRight, Clock3, Copy, Crown, Flag, Hand, Info, RefreshCcw, Rocket } from "lucide-react";
+import { Anchor, Bot, Check, ChevronLeft, ChevronRight, Clock3, Copy, Crown, Flag, Hand, Info, RefreshCcw, Rocket, UserPlus } from "lucide-react";
 
 import type { SkullKingCardInstance, SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
 
@@ -19,23 +19,10 @@ type SkullKingRoomPageProps = {
   onReturnToLobby: () => void;
   onSubmitBid: (bid: number) => Promise<boolean>;
   onPlayCard: (instanceId: string, tigressMode?: TigressPlayMode) => Promise<boolean>;
-  onTimeoutBid: () => Promise<boolean>;
   onTimeoutPlay: () => Promise<boolean>;
+  onAddBot: () => Promise<boolean>;
   onUpdateSettings: (settings: { turnDurationSeconds?: number; orderMode?: "fixed" | "reverse_each_round" | "rotate_each_round" }) => Promise<boolean>;
 };
-
-function describeCard(card: SkullKingCardInstance["card"]): string {
-  if (card.type === "number") return `${card.rank}`;
-  if (card.type === "white_whale") return "White Whale";
-  if (card.type === "skull_king") return "Skull King";
-  if (card.type === "tigress") return card.mode ? `Tigress (${card.mode})` : "Tigress";
-  return card.type.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function cardSuitLabel(card: SkullKingCardInstance["card"]): string {
-  if (card.type !== "number") return card.type === "tigress" && card.mode === "pirate" ? "Pirate" : "Special";
-  return card.suit;
-}
 
 function isWinningCard(state: SkullKingPlayerViewState, instanceId: string): boolean {
   const winningIndex = state.round?.currentTrick.winningPlayIndex;
@@ -54,8 +41,8 @@ export function SkullKingRoomPage({
   onReturnToLobby,
   onSubmitBid,
   onPlayCard,
-  onTimeoutBid,
   onTimeoutPlay,
+  onAddBot,
   onUpdateSettings,
 }: SkullKingRoomPageProps) {
   const [selectedBid, setSelectedBid] = React.useState(1);
@@ -75,6 +62,19 @@ export function SkullKingRoomPage({
   const [copied, setCopied] = React.useState(false);
   const readyCount = state.players.filter((player) => player.isReady).length;
   const canStartRound = state.players.length >= 2 && state.players.every((player) => player.isReady);
+  const canAddBot = isCreator && state.phase === "lobby" && state.players.length < 6;
+  const hasSubmittedBid = self?.bid !== null && self?.bid !== undefined;
+  const canSubmitBid = bidding && Boolean(self) && !hasSubmittedBid && secondsLeft > 0;
+  const isResolvingTrick = Boolean(
+    state.phase === "playing" &&
+      state.round &&
+      state.round.currentPlayerId === null &&
+      state.round.currentTrick.plays.length === state.round.playerOrder.length,
+  );
+  const winningPlay = state.round?.currentTrick.winningPlayIndex !== null && state.round?.currentTrick.winningPlayIndex !== undefined
+    ? state.round.currentTrick.plays[state.round.currentTrick.winningPlayIndex]
+    : null;
+  const winningPlayerName = winningPlay ? state.players.find((player) => player.id === winningPlay.playerId)?.name ?? winningPlay.playerId : null;
   const handleCopyCode = () => {
     navigator.clipboard.writeText(state.roomId);
     setCopied(true);
@@ -82,7 +82,7 @@ export function SkullKingRoomPage({
   };
 
   React.useEffect(() => {
-    if (!state.round?.currentPlayerId) {
+    if (!state.round) {
       setSecondsLeft(state.settings.turnDurationSeconds);
       return;
     }
@@ -96,28 +96,21 @@ export function SkullKingRoomPage({
     update();
     const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
-  }, [state.round?.currentPlayerId, state.round?.turnStartedAt, state.settings.turnDurationSeconds]);
+  }, [state.round, state.round?.currentPlayerId, state.round?.turnStartedAt, state.settings.turnDurationSeconds]);
 
   React.useEffect(() => {
     setSelectedCardId(null);
   }, [state.round?.currentTrick.trickNumber, state.phase]);
 
   React.useEffect(() => {
-    if (!isMyTurn || secondsLeft > 0 || !state.round?.currentPlayerId) return;
+    if (!isMyTurn || secondsLeft > 0 || !state.round?.currentPlayerId || state.phase !== "playing") return;
 
     const actionKey = `${state.phase}:${state.round.currentTrick.trickNumber}:${state.round.currentPlayerId}`;
     if (autoActionSentRef.current === actionKey) return;
     autoActionSentRef.current = actionKey;
 
-    if (state.phase === "bidding") {
-      void onTimeoutBid();
-      return;
-    }
-
-    if (state.phase === "playing") {
-      void onTimeoutPlay();
-    }
-  }, [isMyTurn, onTimeoutBid, onTimeoutPlay, secondsLeft, state.phase, state.round?.currentPlayerId, state.round?.currentTrick.trickNumber]);
+    void onTimeoutPlay();
+  }, [isMyTurn, onTimeoutPlay, secondsLeft, state.phase, state.round?.currentPlayerId, state.round?.currentTrick.trickNumber]);
 
   React.useEffect(() => {
     autoActionSentRef.current = null;
@@ -168,17 +161,18 @@ export function SkullKingRoomPage({
           </div>
           <div className="skull-player-list">
             {state.players.map((player, index) => (
-              <div key={player.id} className={`skull-player-row ${player.id === state.selfPlayerId ? "is-self" : ""} ${state.round?.currentPlayerId === player.id ? "is-current" : ""}`}>
+              <div key={player.id} className={`skull-player-row ${player.id === state.selfPlayerId ? "is-self" : ""} ${state.round?.currentPlayerId === player.id ? "is-current" : ""} ${isResolvingTrick && winningPlay?.playerId === player.id ? "is-trick-winner" : ""}`}>
                 <div className="skull-player-row-main">
                   <strong>
                     {index + 1}. {player.name} {player.id === state.creatorId ? <Crown size={13} strokeWidth={2.2} aria-hidden="true" /> : null}
+                    {player.isBot ? <Bot size={13} strokeWidth={2.2} aria-hidden="true" /> : null}
                   </strong>
-                  <span className="muted-text">
-                    Bid {player.bid ?? "-"} | Tricks {player.tricksWon} | Score {player.totalScore}
-                    {state.round?.leadPlayerId === player.id ? " | Lead" : ""}
-                    {state.round?.currentPlayerId === player.id ? " | Turn" : ""}
+                  <span className="skull-player-row-stats">
+                    <span>{bidding && player.id !== state.selfPlayerId ? "Bid hidden" : `Bid ${player.bid ?? "-"}`}</span>
+                    <span>Tricks {player.tricksWon}</span>
                   </span>
                 </div>
+                <strong className="skull-player-score">{player.totalScore}</strong>
               </div>
             ))}
           </div>
@@ -272,6 +266,25 @@ export function SkullKingRoomPage({
             </div>
           </section>
         ) : null}
+
+        {state.phase === "lobby" && isCreator ? (
+          <section className="game-panel slim-panel skull-bot-panel">
+            <div className="panel-header-inline">
+              <h3>Bots</h3>
+              <span className="mini-pill">
+                <Bot size={12} strokeWidth={2.2} aria-hidden="true" />
+                {state.players.filter((player) => player.isBot).length}
+              </span>
+            </div>
+            <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()} disabled={!canAddBot}>
+              <span className="button-content">
+                <UserPlus size={16} strokeWidth={2.2} aria-hidden="true" />
+                Add Random Bot
+              </span>
+            </button>
+            <p className="muted-text skull-bot-note">{state.players.length >= 6 ? "Skull King supports up to 6 players here." : "Bots act from their own player view."}</p>
+          </section>
+        ) : null}
         </aside>
 
         <section className="table-center">
@@ -280,12 +293,22 @@ export function SkullKingRoomPage({
             <section className="game-panel skull-center-panel">
               <div className="panel-header-inline">
                 <h3>Current Trick</h3>
-                {state.round?.currentPlayerId ? <span className="mini-pill is-hot">Waiting on {state.players.find((player) => player.id === state.round?.currentPlayerId)?.name ?? "player"}</span> : null}
+                {bidding ? (
+                  <span className="mini-pill is-hot">Waiting for bids</span>
+                ) : isResolvingTrick ? (
+                  <span className="mini-pill is-hot">{winningPlayerName ? `${winningPlayerName} takes it` : "No winner"}</span>
+                ) : state.round?.currentPlayerId ? (
+                  <span className="mini-pill is-hot">Waiting on {state.players.find((player) => player.id === state.round?.currentPlayerId)?.name ?? "player"}</span>
+                ) : null}
               </div>
-              <div className="skull-trick-table">
+              <div className={`skull-trick-table ${isResolvingTrick ? "is-resolving" : ""}`}>
                 {state.round?.currentTrick.plays.length ? (
-                  state.round.currentTrick.plays.map((play) => (
-                    <article key={play.card.instanceId} className={`skull-trick-card ${isWinningCard(state, play.card.instanceId) ? "is-winning" : ""}`}>
+                  state.round.currentTrick.plays.map((play, index) => (
+                    <article
+                      key={play.card.instanceId}
+                      className={`skull-trick-card ${isWinningCard(state, play.card.instanceId) ? "is-winning" : ""}`}
+                      style={{ "--play-index": index } as React.CSSProperties}
+                    >
                       {isWinningCard(state, play.card.instanceId) ? (
                         <div className="skull-winning-badge">
                           <Flag size={14} strokeWidth={2.2} aria-hidden="true" />
@@ -293,8 +316,6 @@ export function SkullKingRoomPage({
                       ) : null}
                       <SkullKingCardView card={play.card.card} compact />
                       <span className="skull-trick-player">{state.players.find((player) => player.id === play.playerId)?.name ?? play.playerId}</span>
-                      <strong>{describeCard(play.card.card)}</strong>
-                      <span>{cardSuitLabel(play.card.card)}</span>
                     </article>
                   ))
                 ) : (
@@ -316,7 +337,7 @@ export function SkullKingRoomPage({
                 <div className="skull-bid-panel">
                   <div className="panel-header-inline">
                     <h3>Your Bid</h3>
-                    {isMyTurn ? <span className="mini-pill is-hot">Your Turn</span> : null}
+                    <span className={`mini-pill ${canSubmitBid ? "is-hot" : ""}`}>{hasSubmittedBid ? `Locked: ${self.bid}` : "Choose now"}</span>
                   </div>
                   <div className="skull-bid-controls">
                     <div className="skull-bid-grid" role="group" aria-label="Choose your bid">
@@ -326,7 +347,7 @@ export function SkullKingRoomPage({
                           type="button"
                           className={`skull-bid-option ${selectedBid === bidValue ? "is-selected" : ""}`}
                           onClick={() => setSelectedBid(bidValue)}
-                          disabled={!isMyTurn}
+                          disabled={!canSubmitBid}
                           aria-pressed={selectedBid === bidValue}
                         >
                           {bidValue}
@@ -334,8 +355,8 @@ export function SkullKingRoomPage({
                       ))}
                     </div>
                     <div className="skull-bid-row">
-                      <button type="button" className="primary-button" disabled={!isMyTurn} onClick={() => void onSubmitBid(selectedBid)}>
-                        Submit Bid
+                      <button type="button" className="primary-button" disabled={!canSubmitBid} onClick={() => void onSubmitBid(selectedBid)}>
+                        {hasSubmittedBid ? "Bid Submitted" : "Submit Bid"}
                       </button>
                     </div>
                   </div>

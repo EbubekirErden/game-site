@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { buildSkullKingDeck } from "./cards.js";
-import { getNextPlayerId, getTrickBonusEvents, getWinningPlayIndex, materializePlayedCard, canPlayCard } from "./rules.js";
+import { getNextPlayerId, getNextTrickLeadPlayerId, getTrickBonusEvents, getWinningPlayIndex, materializePlayedCard, canPlayCard } from "./rules.js";
 import { applyRoundScores } from "./scoring.js";
 import type {
   PlayerID,
@@ -71,6 +71,7 @@ function scoreCurrentRound(state: SkullKingGameState): SkullKingGameState {
     bid: null,
     tricksWon: 0,
     hand: [],
+    isReady: Boolean(player.isBot),
   }));
   const highestScore = Math.max(...scoredPlayers.map((player) => player.totalScore));
   const isFinalRound = state.round.roundNumber >= getRoundMax(state);
@@ -90,8 +91,10 @@ function scoreCurrentRound(state: SkullKingGameState): SkullKingGameState {
   };
 }
 
-function finishTrick(state: SkullKingGameState): SkullKingGameState {
+export function resolveCurrentTrick(state: SkullKingGameState): SkullKingGameState {
   if (!state.round) return state;
+  if (state.phase !== "playing") return state;
+  if (state.round.currentTrick.plays.length !== state.round.playerOrder.length) return state;
 
   const winningPlayIndex = state.round.currentTrick.winningPlayIndex;
   const winnerPlayerId = winningPlayIndex === null ? null : state.round.currentTrick.plays[winningPlayIndex]?.playerId ?? null;
@@ -125,7 +128,7 @@ function finishTrick(state: SkullKingGameState): SkullKingGameState {
     });
   }
 
-  const nextLeadPlayerId = winnerPlayerId ?? getNextPlayerId(state.round.playerOrder, state.round.leadPlayerId) ?? state.round.leadPlayerId;
+  const nextLeadPlayerId = winnerPlayerId ?? getNextTrickLeadPlayerId(completedTrick.plays) ?? state.round.leadPlayerId;
   return {
     ...state,
     players,
@@ -162,7 +165,7 @@ export function createGame(roomId: RoomID, creatorId: PlayerID): SkullKingGameSt
   };
 }
 
-export function addPlayer(state: SkullKingGameState, id: string, name: string): SkullKingGameState {
+export function addPlayer(state: SkullKingGameState, id: string, name: string, options?: { isBot?: boolean }): SkullKingGameState {
   if (state.phase !== "lobby") return state;
   if (state.players.some((player) => player.id === id) || state.spectators.some((spectator) => spectator.id === id)) return state;
 
@@ -173,6 +176,7 @@ export function addPlayer(state: SkullKingGameState, id: string, name: string): 
       {
         id,
         name,
+        isBot: options?.isBot,
         hand: [],
         bid: null,
         tricksWon: 0,
@@ -259,7 +263,7 @@ export function startRound(state: SkullKingGameState): SkullKingGameState {
       playerOrder,
       starterPlayerId,
       leadPlayerId: starterPlayerId,
-      currentPlayerId: starterPlayerId,
+      currentPlayerId: null,
       turnStartedAt: Date.now(),
       currentTrick: {
         trickNumber: 1,
@@ -275,17 +279,17 @@ export function startRound(state: SkullKingGameState): SkullKingGameState {
 }
 
 export function submitBid(state: SkullKingGameState, playerId: PlayerID, bid: number, timedOut = false): SkullKingActionResult {
-  if (state.phase !== "bidding" || !state.round || state.round.currentPlayerId !== playerId) {
-    return { ok: false, reason: "not_your_turn" };
+  if (state.phase !== "bidding" || !state.round) {
+    return { ok: false, reason: "round_not_active" };
   }
 
   const normalizedBid = Math.max(0, Math.min(state.round.roundNumber, Math.floor(bid)));
   const players = clonePlayers(state.players);
   const player = findPlayer(players, playerId);
   if (!player) return { ok: false, reason: "player_not_found" };
+  if (player.bid !== null) return { ok: false, reason: "invalid_action" };
   player.bid = normalizedBid;
 
-  const nextPlayerId = getNextPlayerId(state.round.playerOrder, playerId);
   const everyoneBid = players.every((candidate) => candidate.bid !== null);
   if (everyoneBid) {
     return {
@@ -311,8 +315,6 @@ export function submitBid(state: SkullKingGameState, playerId: PlayerID, bid: nu
       players,
       round: {
         ...state.round,
-        currentPlayerId: nextPlayerId,
-        turnStartedAt: Date.now(),
       },
       log: [...state.log, { type: "bid_submitted", playerId, bid: normalizedBid, timedOut }],
     },
@@ -365,10 +367,6 @@ export function playCard(
     log: [...state.log, { type: "card_played", playerId, card: playedCard.card, timedOut: options?.timedOut }],
   };
 
-  if (plays.length === round.playerOrder.length) {
-    return { ok: true, state: finishTrick(nextState) };
-  }
-
   return { ok: true, state: nextState };
 }
 
@@ -390,6 +388,7 @@ export function applyPlayTimeout(state: SkullKingGameState, playerId: PlayerID):
 
 export function toPlayerViewState(state: SkullKingGameState, selfPlayerId: PlayerID): SkullKingPlayerViewState {
   const selfRole = state.players.some((player) => player.id === selfPlayerId) ? "player" : "spectator";
+  const hidePendingBids = state.phase === "bidding";
 
   return {
     gameId: state.gameId,
@@ -400,15 +399,19 @@ export function toPlayerViewState(state: SkullKingGameState, selfPlayerId: Playe
     settings: state.settings,
     completedRoundCount: state.completedRoundCount,
     matchWinnerIds: [...state.matchWinnerIds],
-    log: [...state.log],
+    log: state.log.map((event) => {
+      if (!hidePendingBids || event.type !== "bid_submitted" || event.playerId === selfPlayerId) return event;
+      return { ...event, bid: null };
+    }),
     selfPlayerId,
     selfRole,
     players: state.players.map((player) => ({
       id: player.id,
       name: player.name,
+      isBot: player.isBot,
       handCount: player.hand.length,
       hand: player.id === selfPlayerId ? [...player.hand] : [],
-      bid: player.bid,
+      bid: hidePendingBids && player.id !== selfPlayerId ? null : player.bid,
       tricksWon: player.tricksWon,
       roundScore: player.roundScore,
       bonusScore: player.bonusScore,
@@ -451,7 +454,7 @@ export function resetMatchToLobby(state: SkullKingGameState): SkullKingGameState
       roundScore: 0,
       bonusScore: 0,
       totalScore: 0,
-      isReady: false,
+      isReady: Boolean(player.isBot),
     })),
     round: null,
     completedRoundCount: 0,

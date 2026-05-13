@@ -17,11 +17,17 @@ export function applyRoundScores(
   roundNumber: number,
   bonusEvents: SkullKingBonusEvent[],
 ): SkullKingPlayerState[] {
+  const exactBidByPlayerId = new Map(players.map((player) => [player.id, (player.bid ?? 0) === player.tricksWon]));
+
   return players.map((player) => {
     const bid = player.bid ?? 0;
     const baseScore = scoreBid(roundNumber, bid, player.tricksWon);
     const bonusScore = bonusEvents
-      .filter((event) => event.playerId === player.id)
+      .filter((event) => {
+        if (event.playerId !== player.id) return false;
+        const requiredExactPlayerIds = event.requiredExactPlayerIds ?? [player.id];
+        return requiredExactPlayerIds.every((playerId) => exactBidByPlayerId.get(playerId));
+      })
       .reduce((total, event) => total + event.points, 0);
 
     return {

@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { isGameId } from "@game-site/shared";
 import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
 import type { GameState as LoveLetterGameState } from "@game-site/shared/games/love-letter/types";
+import { chooseRandomSkullKingBotAction } from "@game-site/shared/games/skull-king/bot";
 import {
   addPlayer as addSkullKingPlayer,
   addSpectator as addSkullKingSpectator,
@@ -17,6 +18,7 @@ import {
   removePlayer as removeSkullKingPlayer,
   removeSpectator as removeSkullKingSpectator,
   resetMatchToLobby as resetSkullKingMatchToLobby,
+  resolveCurrentTrick as resolveSkullKingCurrentTrick,
   setPlayerReady as setSkullKingPlayerReady,
   startRound as startSkullKingRound,
   submitBid,
@@ -47,8 +49,14 @@ const roomChats = new Map<string, ChatMessage[]>();
 const playerBySocketId = new Map<string, { roomId: string; playerId: string }>();
 const activeSocketByPlayerKey = new Map<string, string>();
 const pendingRemovalByPlayerKey = new Map<string, NodeJS.Timeout>();
+const pendingBotActionByRoomId = new Map<string, NodeJS.Timeout>();
+const pendingBidDeadlineByRoomId = new Map<string, NodeJS.Timeout>();
+const pendingTrickResolutionByRoomId = new Map<string, NodeJS.Timeout>();
 const DISCONNECT_GRACE_MS = 30_000;
 const MAX_CHAT_HISTORY = 80;
+const BOT_TURN_DELAY_MS = 4_000;
+const TRICK_RESOLUTION_DELAY_MS = 4_200;
+const MAX_SKULL_KING_PLAYERS = 6;
 
 type ChatMessage = {
   id: string;
@@ -98,6 +106,186 @@ function setRoomState(roomId: string, room: RoomRecord, state: LoveLetterGameSta
   });
 }
 
+function getCurrentSkullKingBot(state: SkullKingGameState) {
+  const currentPlayerId = state.round?.currentPlayerId;
+  if (!currentPlayerId || state.phase !== "playing") return null;
+  return state.players.find((player) => player.id === currentPlayerId && player.isBot) ?? null;
+}
+
+function hasPendingSkullKingBotBid(state: SkullKingGameState): boolean {
+  return state.phase === "bidding" && state.players.some((player) => player.isBot && player.bid === null);
+}
+
+function hasPendingSkullKingBid(state: SkullKingGameState): boolean {
+  return state.phase === "bidding" && state.players.some((player) => player.bid === null);
+}
+
+function hasPendingSkullKingTrick(state: SkullKingGameState): boolean {
+  return Boolean(
+    state.phase === "playing" &&
+      state.round &&
+      state.round.currentPlayerId === null &&
+      state.round.currentTrick.plays.length === state.round.playerOrder.length,
+  );
+}
+
+function clearPendingBotAction(roomId: string): void {
+  const timeout = pendingBotActionByRoomId.get(roomId);
+  if (!timeout) return;
+
+  clearTimeout(timeout);
+  pendingBotActionByRoomId.delete(roomId);
+}
+
+function clearPendingBidDeadline(roomId: string): void {
+  const timeout = pendingBidDeadlineByRoomId.get(roomId);
+  if (!timeout) return;
+
+  clearTimeout(timeout);
+  pendingBidDeadlineByRoomId.delete(roomId);
+}
+
+function scheduleSkullKingBidDeadline(roomId: string): void {
+  const room = getSkullKingRoom(roomId);
+  if (!room || !room.state.round || !hasPendingSkullKingBid(room.state)) {
+    clearPendingBidDeadline(roomId);
+    return;
+  }
+
+  if (pendingBidDeadlineByRoomId.has(roomId)) return;
+
+  const deadlineAt = room.state.round.turnStartedAt + room.state.settings.turnDurationSeconds * 1000;
+  const delayMs = Math.max(0, deadlineAt - Date.now());
+  const timeout = setTimeout(() => {
+    pendingBidDeadlineByRoomId.delete(roomId);
+    applySkullKingBidDeadline(roomId);
+  }, delayMs);
+
+  pendingBidDeadlineByRoomId.set(roomId, timeout);
+}
+
+function applySkullKingBidDeadline(roomId: string): void {
+  const room = getSkullKingRoom(roomId);
+  if (!room || !hasPendingSkullKingBid(room.state)) return;
+
+  let nextState = room.state;
+  for (const player of room.state.players) {
+    if (nextState.phase !== "bidding") break;
+    if (nextState.players.find((candidate) => candidate.id === player.id)?.bid !== null) continue;
+
+    const result = applyBidTimeout(nextState, player.id);
+    if (result.ok && result.state) {
+      nextState = result.state;
+    }
+  }
+
+  setRoomState(roomId, room, nextState);
+  emitRoomState(roomId);
+}
+
+function clearPendingTrickResolution(roomId: string): void {
+  const timeout = pendingTrickResolutionByRoomId.get(roomId);
+  if (!timeout) return;
+
+  clearTimeout(timeout);
+  pendingTrickResolutionByRoomId.delete(roomId);
+}
+
+function scheduleSkullKingTrickResolution(roomId: string): void {
+  if (pendingTrickResolutionByRoomId.has(roomId)) return;
+
+  const room = getSkullKingRoom(roomId);
+  if (!room || !hasPendingSkullKingTrick(room.state)) return;
+
+  const timeout = setTimeout(() => {
+    pendingTrickResolutionByRoomId.delete(roomId);
+    resolveSkullKingTrick(roomId);
+  }, TRICK_RESOLUTION_DELAY_MS);
+
+  pendingTrickResolutionByRoomId.set(roomId, timeout);
+}
+
+function resolveSkullKingTrick(roomId: string): void {
+  const room = getSkullKingRoom(roomId);
+  if (!room || !hasPendingSkullKingTrick(room.state)) return;
+
+  setRoomState(roomId, room, resolveSkullKingCurrentTrick(room.state));
+  emitRoomState(roomId);
+}
+
+function scheduleSkullKingBotTurn(roomId: string): void {
+  if (pendingBotActionByRoomId.has(roomId)) return;
+
+  const room = getSkullKingRoom(roomId);
+  if (!room || (!getCurrentSkullKingBot(room.state) && !hasPendingSkullKingBotBid(room.state))) return;
+
+  const timeout = setTimeout(() => {
+    pendingBotActionByRoomId.delete(roomId);
+    runSkullKingBotTurn(roomId);
+  }, BOT_TURN_DELAY_MS);
+
+  pendingBotActionByRoomId.set(roomId, timeout);
+}
+
+function runSkullKingBotTurn(roomId: string): void {
+  const room = getSkullKingRoom(roomId);
+  if (!room) return;
+
+  if (hasPendingSkullKingBotBid(room.state)) {
+    let nextState = room.state;
+    for (const bot of room.state.players.filter((player) => player.isBot && player.bid === null)) {
+      if (nextState.phase !== "bidding") break;
+
+      const action = chooseRandomSkullKingBotAction(toSkullKingPlayerViewState(nextState, bot.id));
+      if (action?.type !== "bid") continue;
+
+      const result = submitBid(nextState, bot.id, action.bid);
+      if (result.ok && result.state) {
+        nextState = result.state;
+      }
+    }
+
+    if (nextState !== room.state) {
+      setRoomState(roomId, room, nextState);
+      emitRoomState(roomId);
+    }
+    return;
+  }
+
+  const bot = getCurrentSkullKingBot(room.state);
+  if (!bot) return;
+  const botTurnDeadlineAt = (room.state.round?.turnStartedAt ?? Date.now()) + BOT_TURN_DELAY_MS;
+  const remainingDelayMs = botTurnDeadlineAt - Date.now();
+  if (remainingDelayMs > 0) {
+    const timeout = setTimeout(() => {
+      pendingBotActionByRoomId.delete(roomId);
+      runSkullKingBotTurn(roomId);
+    }, remainingDelayMs);
+    pendingBotActionByRoomId.set(roomId, timeout);
+    return;
+  }
+
+  const action = chooseRandomSkullKingBotAction(toSkullKingPlayerViewState(room.state, bot.id));
+  if (!action) return;
+
+  const result =
+    action.type === "bid"
+      ? submitBid(room.state, bot.id, action.bid)
+      : playSkullKingCard(room.state, bot.id, action.instanceId, { tigressMode: action.tigressMode });
+
+  if (!result.ok || !result.state) return;
+
+  setRoomState(roomId, room, result.state);
+  emitRoomState(roomId);
+}
+
+function createSkullKingBotPlayer(room: SkullKingRoomRecord): SkullKingGameState {
+  const botNumber = room.state.players.filter((player) => player.isBot).length + 1;
+  const botId = `bot-${randomBytes(5).toString("hex")}`;
+  const withBot = addSkullKingPlayer(room.state, botId, `Random Bot ${botNumber}`, { isBot: true });
+  return setSkullKingPlayerReady(withBot, botId, true);
+}
+
 function removePlayerFromRoom(roomId: string, playerId: string): void {
   clearPendingRemoval(roomId, playerId);
   activeSocketByPlayerKey.delete(getPlayerKey(roomId, playerId));
@@ -122,7 +310,10 @@ function removePlayerFromRoom(roomId: string, playerId: string): void {
       ? removeSkullKingPlayer(room.state, playerId)
       : removeSkullKingSpectator(room.state, playerId);
 
-    if (next.players.length === 0 && next.spectators.length === 0) {
+    if (next.players.filter((player) => !player.isBot).length === 0 && next.spectators.length === 0) {
+      clearPendingBotAction(roomId);
+      clearPendingBidDeadline(roomId);
+      clearPendingTrickResolution(roomId);
       rooms.delete(roomId);
       roomChats.delete(roomId);
       return;
@@ -190,6 +381,12 @@ function emitRoomState(roomId: string): void {
     io
       .to(getPlayerKey(roomId, spectator.id))
       .emit("state", room.gameId === "love-letter" ? toPlayerViewState(room.state, spectator.id) : toSkullKingPlayerViewState(room.state, spectator.id));
+  }
+
+  if (room.gameId === "skull-king") {
+    scheduleSkullKingBidDeadline(roomId);
+    scheduleSkullKingTrickResolution(roomId);
+    scheduleSkullKingBotTurn(roomId);
   }
 }
 
@@ -478,6 +675,9 @@ io.on("connection", (socket) => {
     if (room.gameId === "love-letter") {
       setRoomState(normalizedRoomId, room, resetMatchToLobby(room.state));
     } else {
+      clearPendingBotAction(normalizedRoomId);
+      clearPendingBidDeadline(normalizedRoomId);
+      clearPendingTrickResolution(normalizedRoomId);
       setRoomState(normalizedRoomId, room, resetSkullKingMatchToLobby(room.state));
     }
     emitRoomState(normalizedRoomId);
@@ -567,6 +767,40 @@ io.on("connection", (socket) => {
 
     const next = updateSkullKingSettings(room.state, binding.playerId, settings ?? {});
     setRoomState(normalizedRoomId, room, next);
+    emitRoomState(normalizedRoomId);
+    respond?.({ ok: true });
+  });
+
+  socket.on("skull:add-bot", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+    const binding = getBoundPlayer(socket.id);
+    const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
+    if (!binding || binding.roomId !== normalizedRoomId) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    const room = getSkullKingRoom(normalizedRoomId);
+    if (!room) {
+      respond?.({ ok: false, reason: "room_not_found" });
+      return;
+    }
+
+    if (room.state.creatorId !== binding.playerId) {
+      respond?.({ ok: false, reason: "only_creator_can_change_mode" });
+      return;
+    }
+
+    if (room.state.phase !== "lobby") {
+      respond?.({ ok: false, reason: "cannot_change_mode_now" });
+      return;
+    }
+
+    if (room.state.players.length >= MAX_SKULL_KING_PLAYERS) {
+      respond?.({ ok: false, reason: "room_full" });
+      return;
+    }
+
+    setRoomState(normalizedRoomId, room, createSkullKingBotPlayer(room));
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
   });

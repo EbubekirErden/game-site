@@ -37,6 +37,8 @@ export function formatErrorReason(reason: string): string {
       return "Only the room creator can change the mode.";
     case "cannot_change_mode_now":
       return "The mode can only be changed while the room is still in the lobby.";
+    case "room_full":
+      return "This Skull King room is full.";
     case "game_already_started":
       return "That room already started, so new players cannot join right now.";
     case "game_not_available":

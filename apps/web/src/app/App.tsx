@@ -552,6 +552,22 @@ export function App() {
     });
   }
 
+  function handleSkullAddBot(): Promise<boolean> {
+    if (!isSkullKingState(state)) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      socket.emit("skull:add-bot", { roomId: state.roomId }, (response: { ok: boolean; reason?: string }) => {
+        if (!response.ok) {
+          setMessage(formatErrorReason(response.reason ?? "invalid_action"));
+          resolve(false);
+          return;
+        }
+
+        resolve(true);
+      });
+    });
+  }
+
   function handleSkullTimeoutBid(): Promise<boolean> {
     if (!isSkullKingState(state)) return Promise.resolve(false);
 
@@ -655,8 +671,8 @@ export function App() {
                 onReturnToLobby={handleReturnToLobby}
                 onSubmitBid={handleSkullBid}
                 onPlayCard={handleSkullPlayCard}
-                onTimeoutBid={handleSkullTimeoutBid}
                 onTimeoutPlay={handleSkullTimeoutPlay}
+                onAddBot={handleSkullAddBot}
                 onUpdateSettings={handleSkullSettings}
               />
             ) : null

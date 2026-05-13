@@ -28,6 +28,7 @@ export interface SkullKingCardInstance {
 export interface SkullKingPlayerState {
   id: PlayerID;
   name: string;
+  isBot?: boolean;
   hand: SkullKingCardInstance[];
   bid: number | null;
   tricksWon: number;
@@ -40,6 +41,7 @@ export interface SkullKingPlayerState {
 export interface SkullKingPublicPlayerState {
   id: PlayerID;
   name: string;
+  isBot?: boolean;
   handCount: number;
   bid: number | null;
   tricksWon: number;
@@ -67,7 +69,14 @@ export interface SkullKingTrickPlay {
 export interface SkullKingBonusEvent {
   playerId: PlayerID;
   points: number;
-  reason: "skull_king_pirate_capture" | "mermaid_skull_king_capture" | "pirate_mermaid_capture" | "loot_success";
+  reason:
+    | "skull_king_pirate_capture"
+    | "mermaid_skull_king_capture"
+    | "pirate_mermaid_capture"
+    | "standard_fourteen_capture"
+    | "black_fourteen_capture"
+    | "loot_success";
+  requiredExactPlayerIds?: PlayerID[];
 }
 
 export interface SkullKingCompletedTrick {
@@ -116,7 +125,7 @@ export type SkullKingGameEvent =
   | { type: "player_ready_changed"; playerId: PlayerID; isReady: boolean }
   | { type: "settings_changed"; settings: SkullKingSettings }
   | { type: "round_started"; roundNumber: number; starterPlayerId: PlayerID }
-  | { type: "bid_submitted"; playerId: PlayerID; bid: number; timedOut?: boolean }
+  | { type: "bid_submitted"; playerId: PlayerID; bid: number | null; timedOut?: boolean }
   | { type: "card_played"; playerId: PlayerID; card: SkullKingCard; timedOut?: boolean }
   | { type: "trick_completed"; trickNumber: number; winnerPlayerId: PlayerID | null }
   | { type: "round_scored"; roundNumber: number }

@@ -6,7 +6,7 @@ import { Server } from "socket.io";
 import { isGameId } from "@game-site/shared";
 import { addPlayer, addSpectator, canStartReadyRound, cardinalPeekAction, createGame, playCardAction, removePlayer, removeSpectator, resetMatchToLobby, setGameMode, setPlayerReady, startRound, toPlayerViewState } from "@game-site/shared/games/love-letter/engine";
 import type { GameState as LoveLetterGameState } from "@game-site/shared/games/love-letter/types";
-import { chooseRandomSkullKingBotAction } from "@game-site/shared/games/skull-king/bot";
+import { chooseSkullKingBotAction } from "@game-site/shared/games/skull-king/bot";
 import {
   addPlayer as addSkullKingPlayer,
   addSpectator as addSkullKingSpectator,
@@ -25,7 +25,7 @@ import {
   toPlayerViewState as toSkullKingPlayerViewState,
   updateSettings as updateSkullKingSettings,
 } from "@game-site/shared/games/skull-king/engine";
-import type { SkullKingGameState } from "@game-site/shared/games/skull-king/types";
+import type { SkullKingBotStrategy, SkullKingGameState } from "@game-site/shared/games/skull-king/types";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -54,7 +54,7 @@ const pendingBidDeadlineByRoomId = new Map<string, NodeJS.Timeout>();
 const pendingTrickResolutionByRoomId = new Map<string, NodeJS.Timeout>();
 const DISCONNECT_GRACE_MS = 30_000;
 const MAX_CHAT_HISTORY = 80;
-const BOT_TURN_DELAY_MS = 4_000;
+const BOT_TURN_DELAY_MS = 2_000;
 const TRICK_RESOLUTION_DELAY_MS = 4_200;
 const MAX_SKULL_KING_PLAYERS = 6;
 
@@ -236,7 +236,7 @@ function runSkullKingBotTurn(roomId: string): void {
     for (const bot of room.state.players.filter((player) => player.isBot && player.bid === null)) {
       if (nextState.phase !== "bidding") break;
 
-      const action = chooseRandomSkullKingBotAction(toSkullKingPlayerViewState(nextState, bot.id));
+      const action = chooseSkullKingBotAction(toSkullKingPlayerViewState(nextState, bot.id), bot.botStrategy ?? "random");
       if (action?.type !== "bid") continue;
 
       const result = submitBid(nextState, bot.id, action.bid);
@@ -265,7 +265,7 @@ function runSkullKingBotTurn(roomId: string): void {
     return;
   }
 
-  const action = chooseRandomSkullKingBotAction(toSkullKingPlayerViewState(room.state, bot.id));
+  const action = chooseSkullKingBotAction(toSkullKingPlayerViewState(room.state, bot.id), bot.botStrategy ?? "random");
   if (!action) return;
 
   const result =
@@ -279,10 +279,21 @@ function runSkullKingBotTurn(roomId: string): void {
   emitRoomState(roomId);
 }
 
-function createSkullKingBotPlayer(room: SkullKingRoomRecord): SkullKingGameState {
-  const botNumber = room.state.players.filter((player) => player.isBot).length + 1;
+function normalizeSkullKingBotStrategy(strategy: unknown): SkullKingBotStrategy {
+  return strategy === "safe" || strategy === "aggressive" || strategy === "genius" || strategy === "random" ? strategy : "random";
+}
+
+function getSkullKingBotName(strategy: SkullKingBotStrategy, botNumber: number): string {
+  if (strategy === "safe") return `Garantici Bot ${botNumber}`;
+  if (strategy === "aggressive") return `Agresif Bot ${botNumber}`;
+  if (strategy === "genius") return `Zeki Bot ${botNumber}`;
+  return `Random Bot ${botNumber}`;
+}
+
+function createSkullKingBotPlayer(room: SkullKingRoomRecord, strategy: SkullKingBotStrategy): SkullKingGameState {
+  const botNumber = room.state.players.filter((player) => player.isBot && (player.botStrategy ?? "random") === strategy).length + 1;
   const botId = `bot-${randomBytes(5).toString("hex")}`;
-  const withBot = addSkullKingPlayer(room.state, botId, `Random Bot ${botNumber}`, { isBot: true });
+  const withBot = addSkullKingPlayer(room.state, botId, getSkullKingBotName(strategy, botNumber), { isBot: true, botStrategy: strategy });
   return setSkullKingPlayerReady(withBot, botId, true);
 }
 
@@ -771,7 +782,7 @@ io.on("connection", (socket) => {
     respond?.({ ok: true });
   });
 
-  socket.on("skull:add-bot", ({ roomId }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
+  socket.on("skull:add-bot", ({ roomId, strategy }, respond?: (payload: { ok: boolean; reason?: string }) => void) => {
     const binding = getBoundPlayer(socket.id);
     const normalizedRoomId = String(roomId ?? "").trim().toUpperCase();
     if (!binding || binding.roomId !== normalizedRoomId) {
@@ -800,7 +811,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    setRoomState(normalizedRoomId, room, createSkullKingBotPlayer(room));
+    setRoomState(normalizedRoomId, room, createSkullKingBotPlayer(room, normalizeSkullKingBotStrategy(strategy)));
     emitRoomState(normalizedRoomId);
     respond?.({ ok: true });
   });

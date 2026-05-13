@@ -4,7 +4,7 @@ import { Navigate, Route, Routes, matchPath, useLocation, useNavigate } from "re
 import { GAME_DEFINITIONS, getCardDef } from "@game-site/shared";
 import type { LoveLetterMode, PrivateEffectPresentation, PlayerViewState as LoveLetterPlayerViewState } from "@game-site/shared";
 import type { GameID } from "@game-site/shared/commonTypes";
-import type { SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
+import type { SkullKingBotStrategy, SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
 
 import { formatErrorReason } from "../lib/gamePresentation.js";
 import { socket } from "../lib/socket.js";
@@ -120,6 +120,10 @@ function getPhaseMessage(gameId: AppGameState["gameId"], phase: AppGameState["ph
 
   if (phase === "match_over") {
     return "Match over.";
+  }
+
+  if (gameId === "skull-king") {
+    return "";
   }
 
   return "Game in progress.";
@@ -552,11 +556,11 @@ export function App() {
     });
   }
 
-  function handleSkullAddBot(): Promise<boolean> {
+  function handleSkullAddBot(strategy: SkullKingBotStrategy): Promise<boolean> {
     if (!isSkullKingState(state)) return Promise.resolve(false);
 
     return new Promise((resolve) => {
-      socket.emit("skull:add-bot", { roomId: state.roomId }, (response: { ok: boolean; reason?: string }) => {
+      socket.emit("skull:add-bot", { roomId: state.roomId, strategy }, (response: { ok: boolean; reason?: string }) => {
         if (!response.ok) {
           setMessage(formatErrorReason(response.reason ?? "invalid_action"));
           resolve(false);

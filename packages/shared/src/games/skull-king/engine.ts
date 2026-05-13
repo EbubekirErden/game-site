@@ -8,6 +8,7 @@ import type {
   PlayerOrderMode,
   RoomID,
   SkullKingActionResult,
+  SkullKingBotStrategy,
   SkullKingCardInstance,
   SkullKingCompletedTrick,
   SkullKingGameState,
@@ -165,7 +166,7 @@ export function createGame(roomId: RoomID, creatorId: PlayerID): SkullKingGameSt
   };
 }
 
-export function addPlayer(state: SkullKingGameState, id: string, name: string, options?: { isBot?: boolean }): SkullKingGameState {
+export function addPlayer(state: SkullKingGameState, id: string, name: string, options?: { isBot?: boolean; botStrategy?: SkullKingBotStrategy }): SkullKingGameState {
   if (state.phase !== "lobby") return state;
   if (state.players.some((player) => player.id === id) || state.spectators.some((spectator) => spectator.id === id)) return state;
 
@@ -177,6 +178,7 @@ export function addPlayer(state: SkullKingGameState, id: string, name: string, o
         id,
         name,
         isBot: options?.isBot,
+        botStrategy: options?.isBot ? options.botStrategy ?? "random" : undefined,
         hand: [],
         bid: null,
         tricksWon: 0,
@@ -409,6 +411,7 @@ export function toPlayerViewState(state: SkullKingGameState, selfPlayerId: Playe
       id: player.id,
       name: player.name,
       isBot: player.isBot,
+      botStrategy: player.botStrategy,
       handCount: player.hand.length,
       hand: player.id === selfPlayerId ? [...player.hand] : [],
       bid: hidePendingBids && player.id !== selfPlayerId ? null : player.bid,

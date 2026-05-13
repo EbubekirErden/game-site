@@ -5,6 +5,7 @@ export type SkullKingPhase = "lobby" | "bidding" | "playing" | "round_over" | "m
 export type SkullKingSuit = "green" | "yellow" | "purple" | "black";
 export type PlayerOrderMode = "fixed" | "reverse_each_round" | "rotate_each_round";
 export type TigressPlayMode = "escape" | "pirate";
+export type SkullKingBotStrategy = "random" | "safe" | "aggressive" | "genius";
 
 export type SkullKingCard =
   | {
@@ -29,6 +30,7 @@ export interface SkullKingPlayerState {
   id: PlayerID;
   name: string;
   isBot?: boolean;
+  botStrategy?: SkullKingBotStrategy;
   hand: SkullKingCardInstance[];
   bid: number | null;
   tricksWon: number;
@@ -42,6 +44,7 @@ export interface SkullKingPublicPlayerState {
   id: PlayerID;
   name: string;
   isBot?: boolean;
+  botStrategy?: SkullKingBotStrategy;
   handCount: number;
   bid: number | null;
   tricksWon: number;

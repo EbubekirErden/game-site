@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { applyBidTimeout, createGame, playCard, resolveCurrentTrick, setPlayerReady, startRound, submitBid } from "./engine.js";
-import { chooseRandomSkullKingBotAction } from "./bot.js";
+import { chooseRandomSkullKingBotAction, chooseSkullKingBotAction } from "./bot.js";
 import { canPlayCard, getNextTrickLeadPlayerId, getWinningPlayIndex, materializePlayedCard } from "./rules.js";
 import { toPlayerViewState } from "./engine.js";
 import type { SkullKingCardInstance, SkullKingGameState } from "./types.js";
@@ -250,6 +250,167 @@ test("random bot action is chosen from player view only and follows suit", () =>
   const action = chooseRandomSkullKingBotAction(toPlayerViewState(state, "p2"), () => 0.99);
 
   assert.deepEqual(action, { type: "play_card", instanceId: "g9", tigressMode: undefined });
+});
+
+test("safe skull king bot makes a conservative nonzero bid", () => {
+  let state = setupRound(["Ada", "Bot"]);
+  state = {
+    ...state,
+    round: state.round ? { ...state.round, roundNumber: 5 } : null,
+  };
+  state = withHands(state, {
+    p2: [
+      makeCard("e1", { type: "escape" }),
+      makeCard("g2", { type: "number", suit: "green", rank: 2 }),
+      makeCard("y4", { type: "number", suit: "yellow", rank: 4 }),
+      makeCard("p8", { type: "number", suit: "purple", rank: 8 }),
+      makeCard("b10", { type: "number", suit: "black", rank: 10 }),
+    ],
+  });
+
+  const action = chooseSkullKingBotAction(toPlayerViewState(state, "p2"), "safe");
+
+  assert.equal(action?.type, "bid");
+  assert.equal(action?.type === "bid" ? action.bid >= 1 : false, true);
+  assert.equal(action?.type === "bid" ? action.bid <= 2 : false, true);
+});
+
+test("aggressive skull king bot chooses nil with a very evasive hand", () => {
+  let state = setupRound(["Ada", "Bot"]);
+  state = {
+    ...state,
+    round: state.round ? { ...state.round, roundNumber: 4 } : null,
+  };
+  state = withHands(state, {
+    p2: [
+      makeCard("e1", { type: "escape" }),
+      makeCard("e2", { type: "escape" }),
+      makeCard("loot", { type: "loot" }),
+      makeCard("g1", { type: "number", suit: "green", rank: 1 }),
+    ],
+  });
+
+  const action = chooseSkullKingBotAction(toPlayerViewState(state, "p2"), "aggressive");
+
+  assert.deepEqual(action, { type: "bid", bid: 0 });
+});
+
+test("genius skull king bot protects an already satisfied bid", () => {
+  let state = setupRound(["Ada", "Bot", "Cal"]);
+  state = submitBid(state, "p1", 1).state!;
+  state = submitBid(state, "p2", 0).state!;
+  state = submitBid(state, "p3", 0).state!;
+  state = {
+    ...state,
+    round: state.round
+      ? {
+          ...state.round,
+          playerOrder: ["p1", "p2", "p3"],
+          leadPlayerId: "p1",
+          currentPlayerId: "p2",
+          currentTrick: {
+            trickNumber: 1,
+            leadPlayerId: "p1",
+            plays: [{ playerId: "p1", card: makeCard("g13", { type: "number", suit: "green", rank: 13 }) }],
+            winningPlayIndex: 0,
+          },
+        }
+      : null,
+  };
+  state = withHands(state, {
+    p2: [
+      makeCard("e1", { type: "escape" }),
+      makeCard("skull", { type: "skull_king" }),
+    ],
+  });
+
+  const action = chooseSkullKingBotAction(toPlayerViewState(state, "p2"), "genius");
+
+  assert.deepEqual(action, { type: "play_card", instanceId: "e1", tigressMode: undefined });
+});
+
+test("genius skull king bot adjusts threat reads from opponent bids", () => {
+  let nilOpponentState = setupRound(["Bot", "Opp"]);
+  nilOpponentState = submitBid(nilOpponentState, "p1", 1).state!;
+  nilOpponentState = submitBid(nilOpponentState, "p2", 0).state!;
+  nilOpponentState = withHands(nilOpponentState, {
+    p1: [
+      makeCard("g14", { type: "number", suit: "green", rank: 14 }),
+      makeCard("pirate", { type: "pirate" }),
+    ],
+  });
+
+  let highBidOpponentState = setupRound(["Bot", "Opp"]);
+  highBidOpponentState = submitBid(highBidOpponentState, "p1", 1).state!;
+  highBidOpponentState = submitBid(highBidOpponentState, "p2", 1).state!;
+  highBidOpponentState = withHands(highBidOpponentState, {
+    p1: [
+      makeCard("g14", { type: "number", suit: "green", rank: 14 }),
+      makeCard("pirate", { type: "pirate" }),
+    ],
+  });
+
+  const nilRead = chooseSkullKingBotAction(toPlayerViewState(nilOpponentState, "p1"), "genius");
+  const highBidRead = chooseSkullKingBotAction(toPlayerViewState(highBidOpponentState, "p1"), "genius");
+
+  assert.deepEqual(nilRead, { type: "play_card", instanceId: "pirate", tigressMode: undefined });
+  assert.deepEqual(highBidRead, { type: "play_card", instanceId: "g14", tigressMode: undefined });
+});
+
+test("genius skull king bot remembers void suits from previous tricks", () => {
+  let withoutVoidState = setupRound(["Bot", "Opp"]);
+  withoutVoidState = submitBid(withoutVoidState, "p1", 0).state!;
+  withoutVoidState = submitBid(withoutVoidState, "p2", 1).state!;
+  withoutVoidState = {
+    ...withoutVoidState,
+    round: withoutVoidState.round
+      ? {
+          ...withoutVoidState.round,
+          roundNumber: 2,
+          currentTrick: {
+            trickNumber: 2,
+            leadPlayerId: "p1",
+            plays: [],
+            winningPlayIndex: null,
+          },
+          completedTricks: [],
+        }
+      : null,
+  };
+  withoutVoidState = withHands(withoutVoidState, {
+    p1: [
+      makeCard("g14", { type: "number", suit: "green", rank: 14 }),
+      makeCard("y2", { type: "number", suit: "yellow", rank: 2 }),
+    ],
+  });
+
+  const withVoidState = {
+    ...withoutVoidState,
+    round: withoutVoidState.round
+      ? {
+          ...withoutVoidState.round,
+          completedTricks: [
+            {
+              trickNumber: 1,
+              leadPlayerId: "p1",
+              plays: [
+                { playerId: "p1", card: makeCard("oldg", { type: "number", suit: "green", rank: 5 }) },
+                { playerId: "p2", card: makeCard("olde", { type: "escape" }) },
+              ],
+              winnerPlayerId: "p1",
+              winningPlayIndex: 0,
+              bonusEvents: [],
+            },
+          ],
+        }
+      : null,
+  };
+
+  const noVoidRead = chooseSkullKingBotAction(toPlayerViewState(withoutVoidState, "p1"), "genius");
+  const voidRead = chooseSkullKingBotAction(toPlayerViewState(withVoidState, "p1"), "genius");
+
+  assert.deepEqual(noVoidRead, { type: "play_card", instanceId: "y2", tigressMode: undefined });
+  assert.deepEqual(voidRead, { type: "play_card", instanceId: "g14", tigressMode: undefined });
 });
 
 test("bots stay ready after round scoring so the next round can start", () => {

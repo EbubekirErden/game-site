@@ -1,7 +1,8 @@
 import React from "react";
 import { Anchor, Bot, Check, ChevronLeft, ChevronRight, Clock3, Copy, Crown, Flag, Hand, Info, RefreshCcw, Rocket, UserPlus } from "lucide-react";
 
-import type { SkullKingCardInstance, SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
+import { canPlayCard } from "@game-site/shared/games/skull-king/rules";
+import type { SkullKingBotStrategy, SkullKingCardInstance, SkullKingPlayerViewState, TigressPlayMode } from "@game-site/shared/games/skull-king/types";
 
 import { RoomChat } from "../components/RoomChat.js";
 import { SkullKingCardView } from "../components/SkullKingCardView.js";
@@ -20,7 +21,7 @@ type SkullKingRoomPageProps = {
   onSubmitBid: (bid: number) => Promise<boolean>;
   onPlayCard: (instanceId: string, tigressMode?: TigressPlayMode) => Promise<boolean>;
   onTimeoutPlay: () => Promise<boolean>;
-  onAddBot: () => Promise<boolean>;
+  onAddBot: (strategy: SkullKingBotStrategy) => Promise<boolean>;
   onUpdateSettings: (settings: { turnDurationSeconds?: number; orderMode?: "fixed" | "reverse_each_round" | "rotate_each_round" }) => Promise<boolean>;
 };
 
@@ -49,6 +50,9 @@ export function SkullKingRoomPage({
   const [selectedCardId, setSelectedCardId] = React.useState<string | null>(null);
   const [tigressMode, setTigressMode] = React.useState<TigressPlayMode>("escape");
   const [secondsLeft, setSecondsLeft] = React.useState(state.settings.turnDurationSeconds);
+  const [draggingCardId, setDraggingCardId] = React.useState<string | null>(null);
+  const [isTrickDropActive, setIsTrickDropActive] = React.useState(false);
+  const draggingCardIdRef = React.useRef<string | null>(null);
 
   const self = state.players.find((player) => player.id === state.selfPlayerId) ?? null;
   const isCreator = state.creatorId === state.selfPlayerId;
@@ -75,10 +79,48 @@ export function SkullKingRoomPage({
     ? state.round.currentTrick.plays[state.round.currentTrick.winningPlayIndex]
     : null;
   const winningPlayerName = winningPlay ? state.players.find((player) => player.id === winningPlay.playerId)?.name ?? winningPlay.playerId : null;
+  const visibleMessage = message && message !== "Game in progress." ? message : "";
   const handleCopyCode = () => {
     navigator.clipboard.writeText(state.roomId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+  const getCardIsPlayable = (card: SkullKingCardInstance): boolean => {
+    if (!self || !state.round || !playing || !isMyTurn || isResolvingTrick) return false;
+    return canPlayCard(self.hand, state.round.currentTrick.plays, card);
+  };
+  const getDraggedCard = () => self?.hand.find((card) => card.instanceId === draggingCardIdRef.current) ?? null;
+  const playDraggedCard = (instanceId: string | null) => {
+    const card = self?.hand.find((candidate) => candidate.instanceId === instanceId) ?? null;
+    if (!card || !getCardIsPlayable(card)) return;
+
+    draggingCardIdRef.current = null;
+    setDraggingCardId(null);
+    setIsTrickDropActive(false);
+    void onPlayCard(card.instanceId, card.card.type === "tigress" ? tigressMode : undefined);
+  };
+  const handleCardDragStart = (event: React.DragEvent<HTMLButtonElement>, card: SkullKingCardInstance) => {
+    if (!getCardIsPlayable(card)) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", card.instanceId);
+    draggingCardIdRef.current = card.instanceId;
+    setDraggingCardId(card.instanceId);
+  };
+  const handleTrickDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    const card = getDraggedCard();
+    if (!card || !getCardIsPlayable(card)) return;
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setIsTrickDropActive(true);
+  };
+  const handleTrickDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    playDraggedCard(event.dataTransfer.getData("text/plain") || draggingCardId);
   };
 
   React.useEffect(() => {
@@ -100,6 +142,9 @@ export function SkullKingRoomPage({
 
   React.useEffect(() => {
     setSelectedCardId(null);
+    draggingCardIdRef.current = null;
+    setDraggingCardId(null);
+    setIsTrickDropActive(false);
   }, [state.round?.currentTrick.trickNumber, state.phase]);
 
   React.useEffect(() => {
@@ -276,12 +321,25 @@ export function SkullKingRoomPage({
                 {state.players.filter((player) => player.isBot).length}
               </span>
             </div>
-            <button type="button" className="secondary-button full-width" onClick={() => void onAddBot()} disabled={!canAddBot}>
-              <span className="button-content">
-                <UserPlus size={16} strokeWidth={2.2} aria-hidden="true" />
-                Add Random Bot
-              </span>
-            </button>
+            {[
+              ["random", "Random Bot"],
+              ["safe", "Garantici Bot"],
+              ["aggressive", "Agresif Bot"],
+              ["genius", "Zeki Bot"],
+            ].map(([strategy, label]) => (
+              <button
+                key={strategy}
+                type="button"
+                className="secondary-button full-width"
+                onClick={() => void onAddBot(strategy as SkullKingBotStrategy)}
+                disabled={!canAddBot}
+              >
+                <span className="button-content">
+                  <UserPlus size={16} strokeWidth={2.2} aria-hidden="true" />
+                  Add {label}
+                </span>
+              </button>
+            ))}
             <p className="muted-text skull-bot-note">{state.players.length >= 6 ? "Skull King supports up to 6 players here." : "Bots act from their own player view."}</p>
           </section>
         ) : null}
@@ -301,7 +359,13 @@ export function SkullKingRoomPage({
                   <span className="mini-pill is-hot">Waiting on {state.players.find((player) => player.id === state.round?.currentPlayerId)?.name ?? "player"}</span>
                 ) : null}
               </div>
-              <div className={`skull-trick-table ${isResolvingTrick ? "is-resolving" : ""}`}>
+              <div
+                className={`skull-trick-table ${isResolvingTrick ? "is-resolving" : ""} ${isTrickDropActive ? "is-drop-active" : ""} ${draggingCardId ? "is-drop-ready" : ""}`}
+                onDragOver={handleTrickDragOver}
+                onDragEnter={handleTrickDragOver}
+                onDragLeave={() => setIsTrickDropActive(false)}
+                onDrop={handleTrickDrop}
+              >
                 {state.round?.currentTrick.plays.length ? (
                   state.round.currentTrick.plays.map((play, index) => (
                     <article
@@ -327,10 +391,39 @@ export function SkullKingRoomPage({
               </div>
             </section>
 
-            <section className="game-panel skull-hand-panel">
+            <section className={`game-panel skull-hand-panel ${playing && isMyTurn ? "is-my-turn" : ""}`}>
               <div className="panel-header-inline">
                 <h3>Your Hand</h3>
-                {playing && isMyTurn ? <span className="mini-pill is-hot">Play Now</span> : null}
+                {playing && isMyTurn ? <span className="mini-pill is-hot skull-turn-pill">Your Turn</span> : null}
+              </div>
+
+              <div className="skull-hand-list">
+                {(self?.hand ?? []).map((card) => {
+                  const playable = getCardIsPlayable(card);
+                  const blockedByRule = playing && isMyTurn && !isResolvingTrick && !playable;
+                  return (
+                    <button
+                      key={card.instanceId}
+                      type="button"
+                      className={`skull-hand-card ${selectedCardId === card.instanceId ? "is-selected" : ""} ${blockedByRule ? "is-unplayable" : ""} ${draggingCardId === card.instanceId ? "is-dragging" : ""}`}
+                      onClick={() => {
+                        if (!playable) return;
+                        setSelectedCardId((current) => (current === card.instanceId ? null : card.instanceId));
+                      }}
+                      disabled={playing ? !playable : true}
+                      draggable={playable}
+                      onDragStart={(event) => handleCardDragStart(event, card)}
+                      onDragEnd={() => {
+                        draggingCardIdRef.current = null;
+                        setDraggingCardId(null);
+                        setIsTrickDropActive(false);
+                      }}
+                      title={blockedByRule ? "You must follow the lead suit." : undefined}
+                    >
+                      <SkullKingCardView card={card.card} compact />
+                    </button>
+                  );
+                })}
               </div>
 
               {bidding && self ? (
@@ -363,20 +456,6 @@ export function SkullKingRoomPage({
                 </div>
               ) : null}
 
-              <div className="skull-hand-list">
-                {(self?.hand ?? []).map((card) => (
-                  <button
-                    key={card.instanceId}
-                    type="button"
-                    className={`skull-hand-card ${selectedCardId === card.instanceId ? "is-selected" : ""}`}
-                    onClick={() => setSelectedCardId((current) => (current === card.instanceId ? null : card.instanceId))}
-                    disabled={!playing || !isMyTurn}
-                  >
-                    <SkullKingCardView card={card.card} compact />
-                  </button>
-                ))}
-              </div>
-
               {selectedCard?.card.type === "tigress" ? (
                 <div className="skull-tigress-row">
                   <button type="button" className={`mode-pill ${tigressMode === "escape" ? "is-selected" : ""}`} onClick={() => setTigressMode("escape")}>
@@ -388,16 +467,11 @@ export function SkullKingRoomPage({
                 </div>
               ) : null}
 
-              <button
-                type="button"
-                className="primary-button"
-                disabled={!selectedCardId || !playing || !isMyTurn}
-                onClick={() => selectedCardId && void onPlayCard(selectedCardId, selectedCard?.card.type === "tigress" ? tigressMode : undefined)}
-              >
-                Play Selected Card
-              </button>
+              {playing && isMyTurn ? (
+                <p className="skull-drag-hint">Drag a playable card to the table.</p>
+              ) : null}
 
-              {message ? <p className="helper-text error-text">{message}</p> : null}
+              {visibleMessage ? <p className="helper-text error-text">{visibleMessage}</p> : null}
             </section>
           </section>
         ) : (
